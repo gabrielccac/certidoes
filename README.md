@@ -22,7 +22,7 @@ service.
 ```powershell
 uv sync
 $env:PYTHONPATH = "src"
-uv run pytest tests -q
+uv run python -m pytest tests -q
 ```
 
 Run the API with the inline provider (no Airtable access):
@@ -138,6 +138,6 @@ experiments/                 Browser diagnostics and portal probes
 tests/                       Unit and local integration tests
 ```
 
-Run the complete test suite with `uv run pytest tests -q`. The Airtable test
+Run the complete test suite with `uv run python -m pytest tests -q`. The Airtable test
 uses a local standard-library HTTP server, so it validates the real client and
 provider PATCH/GET flow without modifying an Airtable base.
