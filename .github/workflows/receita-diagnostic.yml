@@ -36,7 +36,6 @@ jobs:
       matrix:
         os: [ubuntu-24.04, windows-2025]
     runs-on: ${{ matrix.os }}
-    if: ${{ inputs.mode != 'issue' || matrix.os == 'windows-2025' }}
     timeout-minutes: 10
     # Linux verify is an expected failure (see header); keep it green
     # so a red run always means the Windows path regressed.
@@ -91,7 +90,7 @@ jobs:
             throw "Mode '$mode' needs RECEITA_TEST_DOCUMENT and RECEITA_TEST_BIRTH repository secrets"
           }
           if ($mode -eq 'issue') {
-            if (-not $IsWindows) { throw "Issue mode is restricted to the Windows runner" }
+            if (-not $IsWindows) { Write-Host "Issue mode is Windows-only; skipping Linux matrix job"; exit 0 }
             $env:LIVE_DOCUMENT = $env:LIVE_DOCUMENT.Trim()
             $env:LIVE_BIRTH = $env:LIVE_BIRTH.Trim()
             New-Item -ItemType Directory -Force -Path runs/receita-issue, tmp/receita-issue-profile | Out-Null
