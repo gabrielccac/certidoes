@@ -44,7 +44,8 @@ jobs:
           export LIVE_DOCUMENT="$(printf %s "$LIVE_DOCUMENT" | tr -d '\r\n')"
           export LIVE_BIRTH="$(printf %s "$LIVE_BIRTH" | tr -d '\r\n')"
           mkdir -p runs/receita-github-linux tmp/receita-github-linux-profile
-          python experiments/receita_compare.py \
+          xvfb-run -a --server-args='-screen 0 1920x1080x24 -nolisten tcp' \
+            python experiments/receita_compare.py \
             --output runs/receita-github-linux/trace.json \
             --profile tmp/receita-github-linux-profile \
             --incognito --verify --transport browser
