@@ -53,6 +53,8 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($env:LIVE_DOCUMENT) -or [string]::IsNullOrWhiteSpace($env:LIVE_BIRTH)) {
             throw "Set RECEITA_TEST_DOCUMENT and RECEITA_TEST_BIRTH repository secrets"
           }
+          $env:LIVE_DOCUMENT = $env:LIVE_DOCUMENT.Trim()
+          $env:LIVE_BIRTH = $env:LIVE_BIRTH.Trim()
           New-Item -ItemType Directory -Force -Path runs\receita-github, tmp\receita-github-profile | Out-Null
           python experiments\receita_compare.py `
             --output runs\receita-github\trace.json `
