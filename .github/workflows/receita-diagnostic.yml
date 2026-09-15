@@ -1,6 +1,6 @@
 name: Receita browser diagnostic
 
-# Single dispatch for both OSes. Depth is controlled by `mode`:
+# Single dispatch for the Windows worker. Depth is controlled by `mode`:
 # - fingerprint: no secrets needed, records the full browser fingerprint
 #   (UA, WebGL, canvas hash, locale, timezone). Cheapest way to compare
 #   Linux vs Windows and to validate harness changes.
@@ -34,12 +34,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2025]
+        os: [windows-2025]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
-    # Linux verify is an expected failure (see header); keep it green
-    # so a red run always means the Windows path regressed.
-    continue-on-error: ${{ inputs.mode == 'verify' && matrix.os == 'ubuntu-24.04' }}
     env:
       PYTHONUTF8: "1"
       PYTHONPATH: src

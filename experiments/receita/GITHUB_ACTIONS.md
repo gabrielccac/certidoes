@@ -1,6 +1,6 @@
 # Windows GitHub Actions diagnostic
 
-The workflow `.github/workflows/receita-diagnostic.yml` runs the same CDP helper in parallel on hosted Windows and Linux VMs and stops after `POST /api/Emissao/verificar` for diagnostic modes. Select `fingerprint`, `token`, `verify`, or `issue` when dispatching it. `issue` is Windows-only and runs the complete Receita flow, including `/api/Emissao`, then uploads the test PDF.
+The workflow `.github/workflows/receita-diagnostic.yml` runs the CDP helper on a hosted Windows VM and stops after `POST /api/Emissao/verificar` for diagnostic modes. Select `fingerprint`, `token`, `verify`, or `issue` when dispatching it. `issue` is Windows-only and runs the complete Receita flow, including `/api/Emissao`, then uploads the test PDF.
 
 Create two repository secrets:
 
@@ -13,7 +13,7 @@ The first successful run (`34914277257`) returned HTTP 200 with `status: Emitida
 
 The workflow uses `uv pip` with the official `setup-uv` cache keyed by `pyproject.toml`. This reduces dependency installation time without changing the browser execution. It cannot shorten hCaptcha scoring or hosted-runner startup.
 
-Run the combined workflow with `verify` to measure both OSes in parallel. A successful Linux run would show that the rejection is tied to the particular Docker/runtime/network context; a Linux `CaptchaFalhaValidacao` would keep the Windows runtime as the meaningful difference.
+The Linux hosted probe was also rejected with `CaptchaFalhaValidacao`, matching Docker, so the production workflow keeps only the Windows worker. The Linux comparison remains documented in `ENVIRONMENT_COMPARISON.md`.
 
 Interpretation:
 
