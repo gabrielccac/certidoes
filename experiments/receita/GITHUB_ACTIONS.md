@@ -39,3 +39,18 @@ python scripts/poll_receita_run.py --repo gabrielccac/certidoes --run-id RUN_ID 
 The helper waits for completion, downloads the artifact to a temporary directory, copies the PDF to `runs/receita`, and removes its temporary copy. The remote artifact remains until its configured retention expires or it is explicitly deleted. This is suitable for low-volume asynchronous jobs; it is not a synchronous HTTP request path because runner startup and hCaptcha can take a minute or more.
 
 The issue artifact contains a real certificate for the supplied test identity. Keep the repository and artifact permissions private for production identities, reduce `retention-days`, or delete the artifact after successful download.
+
+## Docker executor
+
+The Receita source keeps the local browser path as the default. Set `RECEITA_EXECUTOR=github` in the Docker deployment to use the Windows Action instead:
+
+```text
+RECEITA_EXECUTOR=github
+RECEITA_GITHUB_REPO=gabrielccac/certidoes
+RECEITA_GITHUB_TOKEN=<fine-grained token with Actions read/write>
+RECEITA_GITHUB_REF=main
+```
+
+The source encrypts `{documento, data_nascimento}` with the repository's public RSA key, dispatches `issue`, polls the matching run, downloads its PDF artifact, and saves it in the request's `output_dir`. The private key exists only as the `RECEITA_PAYLOAD_PRIVATE_KEY` repository secret. Fixed test secrets are only a manual fallback; production requests use the encrypted payload.
+
+This is asynchronous and currently supports CPF. A request can take several minutes because it waits for a hosted Windows runner and the Receita browser flow. The artifact is temporary transport (seven-day retention in this workflow), not permanent storage; keep the repository private when handling real identities.

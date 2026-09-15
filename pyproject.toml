@@ -10,3 +10,6 @@ dependencies = ["requests>=2.31", "curl_cffi>=0.14", "opencv-python-headless>=4.
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+certidoes = ["*.pem"]

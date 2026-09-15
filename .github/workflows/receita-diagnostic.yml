@@ -3,16 +3,10 @@ run-name: Receita ${{ inputs.mode }} ${{ inputs.request_id }}
 
 # Single dispatch for the Windows worker. Depth is controlled by `mode`:
 # - fingerprint: no secrets needed, records the full browser fingerprint
-#   (UA, WebGL, canvas hash, locale, timezone). Cheapest way to compare
-#   Linux vs Windows and to validate harness changes.
+#   (UA, WebGL, canvas hash, locale, timezone).
 # - token: additionally mints a real hCaptcha token (needs secrets).
-# - verify: full CAPTEA validation (needs secrets). Expected RED on
-#   ubuntu (CaptchaFalhaValidacao) and GREEN on windows — that gap is
-#   the documented DirectWrite-vs-FreeType finding, not a regression.
-#
-# Billing note: Windows runners cost 2x minutes, Linux 1x. A ~4 min
-# Windows run bills ~8 min, so ~250 such runs fit the 2,000 min/month
-# free allowance (private repos; public repos are unlimited).
+# - verify: full hCaptcha validation (needs secrets).
+# - issue: runs the complete Receita flow and uploads the generated PDF.
 
 on:
   workflow_dispatch:
@@ -35,7 +29,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: receita-diagnostic-${{ inputs.mode }}
+  group: receita-diagnostic-${{ inputs.mode }}-${{ inputs.request_id || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -99,9 +93,8 @@ jobs:
             throw "Mode '$mode' needs an encrypted payload or test repository secrets"
           }
           if ($mode -eq 'issue') {
-            if (-not $IsWindows) { Write-Host "Issue mode is Windows-only; skipping Linux matrix job"; exit 0 }
-            $document = $env:LIVE_DOCUMENT.Trim()
-            $birth = $env:LIVE_BIRTH.Trim()
+            $document = ([string]$env:LIVE_DOCUMENT).Trim()
+            $birth = ([string]$env:LIVE_BIRTH).Trim()
             New-Item -ItemType Directory -Force -Path runs/receita-issue, tmp/receita-issue-profile | Out-Null
             if ($env:RECEITA_PAYLOAD) {
               python -m certidoes.github_payload decrypt --ciphertext $env:RECEITA_PAYLOAD --output tmp/receita-request.json
@@ -129,11 +122,7 @@ jobs:
             $env:LIVE_BIRTH = $env:LIVE_BIRTH.Trim()
             $cmd += '--verify'
           }
-          if ($IsLinux) {
-            xvfb-run -a --server-args='-screen 0 1920x1080x24 -nolisten tcp' python @cmd
-          } else {
-            python @cmd
-          }
+          python @cmd
 
       - name: Upload redacted trace
         if: always()

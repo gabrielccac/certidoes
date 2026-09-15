@@ -334,7 +334,7 @@ def _github_generate(request: ReceitaRequest, documento: str, tipo: str) -> Cert
     if len(pdf_names) != 1:
         raise CertificateError(SOURCE, "artifact", "pdf_ausente", "GitHub artifact did not contain exactly one PDF")
     pdf = archive.read(pdf_names[0])
-    filename = f"Certid??o Receita Federal - {documento}.pdf"
+    filename = f"Certidão Receita Federal - {documento}.pdf"
     destination = request.output_dir / filename
     _save(pdf, destination)
     return CertificateResult(SOURCE, tipo, filename, destination,
