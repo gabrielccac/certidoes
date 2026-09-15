@@ -27,8 +27,11 @@ The authorized validation matrix established the failure boundary:
 | Windows `curl_cffi` | HTTP 200, `status: Emitida` |
 | Docker Chrome fetch | HTTP 400, `statusValidacao: CaptchaFalhaValidacao` |
 | Docker `curl_cffi` | HTTP 400, `statusValidacao: CaptchaFalhaValidacao` |
+| GitHub-hosted Windows Chrome (`34914277257`) | HTTP 200, `status: Emitida` |
 
 The Docker result stayed HTTP 400 after matching timezone and language, using Chrome 152 Linux, enabling SwiftShader WebGL, removing each Docker-only flag, using a non-incognito profile, adding 228 font families, and overriding UA/Client Hints/platform to the observed Windows values. The real form-button flow failed the same way. The host and Docker egress IP were identical. This rules out a single missing header, curl TLS impersonation, Chrome major version, locale, viewport, font package, WebGL availability, or the direct `execute()` call as a sufficient fix. The remaining difference is the real Windows versus Linux browser/runtime/device execution and hCaptcha's server-side risk decision; hCaptcha documents that it combines session, behavior, network, device, and action signals rather than relying on one spoofable field.
+
+The controlled Linux `--windows-ua --spoof-pack` experiment also returned HTTP 400. It changed the exposed UA/platform, WebGL strings, memory, CPU count, and screen height, confirming that JavaScript-level spoofing is insufficient by itself.
 
 ## How to preserve the Windows execution
 
