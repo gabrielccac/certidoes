@@ -284,7 +284,7 @@ def _github_generate(request: ReceitaRequest, documento: str, tipo: str) -> Cert
     token = os.environ.get("RECEITA_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN")
     public_key = os.environ.get("RECEITA_GITHUB_PUBLIC_KEY")
     if not public_key:
-        key_file = Path(__file__).with_name("receita_github_public.pem")
+        key_file = Path(__file__).resolve().parents[1] / "receita_github_public.pem"
         if key_file.exists():
             public_key = key_file.read_text(encoding="ascii")
     if not repo or not token or not public_key:
