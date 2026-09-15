@@ -1,0 +1,118 @@
+name: Receita browser diagnostic
+
+# Single dispatch for both OSes. Depth is controlled by `mode`:
+# - fingerprint: no secrets needed, records the full browser fingerprint
+#   (UA, WebGL, canvas hash, locale, timezone). Cheapest way to compare
+#   Linux vs Windows and to validate harness changes.
+# - token: additionally mints a real hCaptcha token (needs secrets).
+# - verify: full CAPTEA validation (needs secrets). Expected RED on
+#   ubuntu (CaptchaFalhaValidacao) and GREEN on windows — that gap is
+#   the documented DirectWrite-vs-FreeType finding, not a regression.
+#
+# Billing note: Windows runners cost 2x minutes, Linux 1x. A ~4 min
+# Windows run bills ~8 min, so ~250 such runs fit the 2,000 min/month
+# free allowance (private repos; public repos are unlimited).
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Probe depth"
+        type: choice
+        default: fingerprint
+        options: [fingerprint, token, verify]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: receita-diagnostic-${{ inputs.mode }}
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    # Linux verify is an expected failure (see header); keep it green
+    # so a red run always means the Windows path regressed.
+    continue-on-error: ${{ inputs.mode == 'verify' && matrix.os == 'ubuntu-24.04' }}
+    env:
+      PYTHONUTF8: "1"
+      PYTHONPATH: src
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv cache
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+
+      - name: Install project dependencies
+        shell: pwsh
+        run: uv pip install --system --no-progress -e . playwright
+
+      - name: Locate Chrome
+        shell: pwsh
+        run: |
+          if ($IsWindows) {
+            $chrome = @(
+              "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+              "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
+            ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+            if (-not $chrome) { throw "Google Chrome was not found on the runner" }
+          } else {
+            $chrome = (Get-Command google-chrome, google-chrome-stable -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+            if (-not $chrome) { throw "Google Chrome was not found on the runner" }
+          }
+          "CHROME_PATH=$chrome" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          & $chrome --version
+
+      - name: Run Receita probe
+        env:
+          LIVE_DOCUMENT: ${{ secrets.RECEITA_TEST_DOCUMENT }}
+          LIVE_BIRTH: ${{ secrets.RECEITA_TEST_BIRTH }}
+        shell: pwsh
+        run: |
+          $mode = '${{ inputs.mode }}'
+          if (($mode -ne 'fingerprint') -and ([string]::IsNullOrWhiteSpace($env:LIVE_DOCUMENT) -or [string]::IsNullOrWhiteSpace($env:LIVE_BIRTH))) {
+            throw "Mode '$mode' needs RECEITA_TEST_DOCUMENT and RECEITA_TEST_BIRTH repository secrets"
+          }
+          New-Item -ItemType Directory -Force -Path runs/receita-probe, tmp/receita-probe-profile | Out-Null
+          $cmd = @(
+            'experiments/receita_compare.py',
+            '--output', 'runs/receita-probe/trace.json',
+            '--profile', 'tmp/receita-probe-profile',
+            '--incognito', '--transport', 'browser'
+          )
+          if ($mode -eq 'token') { $cmd += '--token' }
+          if ($mode -eq 'verify') {
+            $env:LIVE_DOCUMENT = $env:LIVE_DOCUMENT.Trim()
+            $env:LIVE_BIRTH = $env:LIVE_BIRTH.Trim()
+            $cmd += '--verify'
+          }
+          if ($IsLinux) {
+            xvfb-run -a --server-args='-screen 0 1920x1080x24 -nolisten tcp' python @cmd
+          } else {
+            python @cmd
+          }
+
+      - name: Upload redacted trace
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: receita-${{ matrix.os }}-${{ inputs.mode }}-${{ github.run_id }}
+          path: runs/receita-probe/trace.json
+          if-no-files-found: warn
+          retention-days: 7

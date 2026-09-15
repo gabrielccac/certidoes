@@ -1,6 +1,6 @@
 # Windows GitHub Actions diagnostic
 
-The workflows `.github/workflows/receita-windows-diagnostic.yml` and `.github/workflows/receita-linux-diagnostic.yml` run the same CDP helper on hosted Windows and Linux VMs and stop after `POST /api/Emissao/verificar`. They never call `/api/Emissao` and never write a token, CPF, birth date, cookie, or PDF.
+The workflow `.github/workflows/receita-diagnostic.yml` runs the same CDP helper in parallel on hosted Windows and Linux VMs and stops after `POST /api/Emissao/verificar`. Select `fingerprint`, `token`, or `verify` when dispatching it. They never call `/api/Emissao` and never write a token, CPF, birth date, cookie, or PDF.
 
 Create two repository secrets:
 
@@ -11,9 +11,9 @@ Run **Receita Windows browser diagnostic** manually from the Actions tab. The ar
 
 The first successful run (`34914277257`) returned HTTP 200 with `status: Emitida` on the GitHub-hosted Windows runner. It completed in about 1m31s and uploaded `trace.json`. The runner used Chrome 152 on Windows 2025; its locale/timezone and virtual GPU differed from the developer's Windows desktop, so this proves the Windows runtime path, not a byte-for-byte environment clone.
 
-Both workflows enable `setup-python`'s pip cache keyed by `pyproject.toml` and skip the per-run pip self-upgrade. This reduces dependency download time without changing the browser execution. `uv` may shorten installation further, but it cannot shorten hCaptcha scoring or the hosted-runner startup; measure it only if installation remains the bottleneck.
+The workflow uses `uv pip` with the official `setup-uv` cache keyed by `pyproject.toml`. This reduces dependency installation time without changing the browser execution. It cannot shorten hCaptcha scoring or hosted-runner startup.
 
-Run the Linux workflow separately to measure it. A successful Linux run would show that the rejection is tied to the particular Docker/runtime/network context; a Linux `CaptchaFalhaValidacao` would keep the Windows runtime as the meaningful difference.
+Run the combined workflow with `verify` to measure both OSes in parallel. A successful Linux run would show that the rejection is tied to the particular Docker/runtime/network context; a Linux `CaptchaFalhaValidacao` would keep the Windows runtime as the meaningful difference.
 
 Interpretation:
 
