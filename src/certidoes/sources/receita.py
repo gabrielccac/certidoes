@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.request import Request as UrlRequest, urlopen
+from urllib.request import HTTPRedirectHandler, Request as UrlRequest, build_opener, urlopen
 
 from curl_cffi import requests
 
@@ -325,8 +325,12 @@ def _github_generate(request: ReceitaRequest, documento: str, tipo: str) -> Cert
         "Accept": "application/vnd.github+json", "Authorization": f"Bearer {token}",
         "X-GitHub-Api-Version": "2022-11-28",
     })
+    class _DropAuthRedirect(HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            return UrlRequest(newurl, headers={"Accept": "application/zip"})
+
     try:
-        with urlopen(download, timeout=60) as response:
+        with build_opener(_DropAuthRedirect()).open(download, timeout=60) as response:
             archive = zipfile.ZipFile(io.BytesIO(response.read()))
     except (HTTPError, URLError, TimeoutError, zipfile.BadZipFile) as exc:
         raise CertificateError(SOURCE, "github", "github_artifact_download_failed", "GitHub artifact download failed", retryable=True) from exc
