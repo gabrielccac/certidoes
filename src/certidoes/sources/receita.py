@@ -30,6 +30,7 @@ PAGE_URLS = {
 VERIFICAR_URL = "https://servicos.receitafederal.gov.br/servico/certidoes/api/Emissao/verificar"
 EMISSAO_URL = "https://servicos.receitafederal.gov.br/servico/certidoes/api/Emissao"
 WIDGET_SELECTOR = "[data-hcaptcha-widget-id]"
+EMISSAO_RETRY_DELAYS = (1, 2, 4, 8)
 
 BASE_HEADERS = {
     "accept": "application/json, text/plain, */*",
@@ -256,6 +257,22 @@ def _emissao_pdf(response) -> bytes:
     return pdf
 
 
+def _request_emissao_pdf(session, payload: dict, *, cookies: dict[str, str],
+                         user_agent: str, timeout: int) -> bytes:
+    for delay in (*EMISSAO_RETRY_DELAYS, None):
+        response = _post(
+            session, EMISSAO_URL, payload, cookies=cookies,
+            user_agent=user_agent, timeout=timeout,
+        )
+        try:
+            return _emissao_pdf(response)
+        except CertificateError as exc:
+            if exc.code != "emissao_em_processamento" or delay is None:
+                raise
+            time.sleep(delay)
+    raise AssertionError("unreachable")
+
+
 def _save(pdf: bytes, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=destination.parent, suffix=".part", delete=False) as handle:
@@ -338,9 +355,15 @@ def _github_generate(request: ReceitaRequest, documento: str, tipo: str) -> Cert
     if len(pdf_names) != 1:
         raise CertificateError(SOURCE, "artifact", "pdf_ausente", "GitHub artifact did not contain exactly one PDF")
     pdf = archive.read(pdf_names[0])
+    if not pdf.startswith(b"%PDF-"):
+        raise CertificateError(SOURCE, "artifact", "pdf_invalido", "GitHub artifact did not contain a valid PDF")
     filename = f"Certidão Receita Federal - {documento}.pdf"
     destination = request.output_dir / filename
     _save(pdf, destination)
+    try:
+        _github_json("DELETE", artifact["url"], token)
+    except CertificateError:
+        pass
     return CertificateResult(SOURCE, tipo, filename, destination,
                              {"status": "Emitida", "bytes": len(pdf), "executor": "github", "run_id": run["id"]})
 
@@ -368,15 +391,11 @@ def generate(request: ReceitaRequest) -> CertificateResult:
         status = verificar.json().get("status")
     except Exception as exc:
         raise CertificateError(SOURCE, "artifact", "json_invalido", "Verificar response was not valid JSON") from exc
-    emissao = _post(
+    pdf = _request_emissao_pdf(
         session,
-        EMISSAO_URL,
         {key: base[key] for key in ("ni", "tipoContribuinte", "dataNascimento")},
-        cookies=cookies,
-        user_agent=user_agent,
-        timeout=request.request_timeout_s,
+        cookies=cookies, user_agent=user_agent, timeout=request.request_timeout_s,
     )
-    pdf = _emissao_pdf(emissao)
     filename = f"Certidão Receita Federal - {documento}.pdf"
     destination = request.output_dir / filename
     _save(pdf, destination)

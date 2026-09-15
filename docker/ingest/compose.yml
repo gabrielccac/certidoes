@@ -1,0 +1,44 @@
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: docker/ingest/Dockerfile
+    environment:
+      AIRTABLE_PAT: ${AIRTABLE_PAT:?set AIRTABLE_PAT}
+      AIRTABLE_BASE_ID: ${AIRTABLE_BASE_ID:?set AIRTABLE_BASE_ID}
+      INGEST_SECRET: ${INGEST_SECRET:?set INGEST_SECRET}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL, e.g. https://certidoes.example.com}
+      RECEITA_EXECUTOR: ${RECEITA_EXECUTOR:-github}
+      RECEITA_GITHUB_REPO: ${RECEITA_GITHUB_REPO:-gabrielccac/certidoes}
+      RECEITA_GITHUB_TOKEN: ${RECEITA_GITHUB_TOKEN:?set RECEITA_GITHUB_TOKEN}
+      RECEITA_GITHUB_REF: ${RECEITA_GITHUB_REF:-main}
+      RECEITA_GITHUB_WORKFLOW: ${RECEITA_GITHUB_WORKFLOW:-receita-diagnostic.yml}
+    volumes:
+      - ingest-runs:/app/runs
+      - ingest-profile:/app/experiments/profile
+    expose:
+      - "8090"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8090/healthz', timeout=5).status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  caddy:
+    image: caddy:2-alpine
+    command: ["caddy", "reverse-proxy", "--from", "${INGEST_DOMAIN:?set INGEST_DOMAIN}", "--to", "api:8090"]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy-data:/data
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  ingest-runs:
+  ingest-profile:
+  caddy-data:

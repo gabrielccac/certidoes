@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from certidoes.errors import CertificateError
+from certidoes.sources import receita
 from certidoes.sources.receita import ReceitaRequest, _normalize, _require_ok
 
 
@@ -35,3 +36,23 @@ def test_reports_receita_captcha_rejection():
     assert (raised.value.stage, raised.value.code, raised.value.retryable) == (
         "challenge", "captcha_rejeitado", True,
     )
+
+
+def test_retries_receita_while_emission_is_processing(monkeypatch):
+    pdf = b"%PDF-1.4 ready"
+    responses = iter([
+        type("Response", (), {"status_code": 200, "json": lambda self: {
+            "statusEmissao": "EmProcessamento"}})(),
+        type("Response", (), {"status_code": 200, "json": lambda self: {
+            "pdf": __import__("base64").b64encode(pdf).decode()}})(),
+    ])
+    calls = []
+    monkeypatch.setattr(receita, "_post", lambda *args, **kwargs: next(responses))
+    monkeypatch.setattr(receita.time, "sleep", calls.append)
+
+    result = receita._request_emissao_pdf(
+        object(), {"ni": "x"}, cookies={}, user_agent="ua", timeout=30,
+    )
+
+    assert result == pdf
+    assert calls == [1]

@@ -1,0 +1,85 @@
+# Ingest mapping: Airtable base -> PESSOAS table.
+#
+# Resetting to a new base or a renamed field means editing THIS FILE ONLY:
+# replace the table id and the fldXXX column ids (stable across renames;
+# the comments carry the human-readable names). Sources are registry keys
+# (see certidoes/registry.py), so new certificate types need no code either.
+#
+# Trigger (customer automation, "record matches conditions"):
+#   STATUS DOCUMENTAÇÃO changes to TENTAR NOVAMENTE (or a fresh row whose
+#   STATUS is PENDENTE with CPF filled). The worker claims with PROCESSANDO
+#   and finishes with FINALIZADO / FALHA. Mixed results land on FINALIZADO
+#   with per-certificate FALHA lines in RESUMO DOCUMENTAÇÃO.
+
+[base]
+id = "env:AIRTABLE_BASE_ID"  # resolved from the environment, never stored here
+
+[table]
+id = "tbllHy5KvlJrFmXsh"  # PESSOAS
+
+[provider]
+name = "airtable"
+
+[[sources]]
+key = "receita-pf"
+label = "Receita CPF"
+source = "receita"
+
+[sources.columns]
+documento = "fld7IVxBo84EnZWfr"        # CPF (free text; digits transform below)
+data_nascimento = "fldBhaBiQstqWtexJ"  # DATA DE NASCIMENTO (date -> YYYY-MM-DD)
+
+[sources.transforms]
+documento = "digits"
+
+[sources.params]
+is_pessoa_fisica = true
+
+[[sources]]
+key = "tjdft-civel"
+label = "TJDFT Cível"
+source = "tjdft"
+
+[sources.columns]
+documento = "fld7IVxBo84EnZWfr"       # CPF
+primeiro_nome = "fldgu7y4YulIJm7C7"   # Nome (first word only)
+nome_mae = "fldRhtLSq1oeREAAJ"        # NOME DA MÃE
+
+[sources.transforms]
+documento = "digits"
+primeiro_nome = "first_word"
+
+[sources.params]
+tipo_certidao = "CIVEL"
+
+# TRF1 (disabled): needs a per-row certidão type decision the base has no
+# column for yet. To enable, add a column (e.g. TIPO TRF1 with the numeric
+# id) and uncomment, mapping it to tipo_certidao_id. ESTADO already maps
+# to orgao_siglas (single value wrapped into a 1-tuple by `wraps`).
+#
+# [[sources]]
+# key = "trf1"
+# label = "TRF1"
+# source = "trf1"
+# [sources.columns]
+# documento = "fld7IVxBo84EnZWfr"       # CPF
+# orgao_siglas = "fldkHVPMKoBOaHRWA"    # ESTADO DO ÓRGÃO DE EMISSÃO
+# [sources.transforms]
+# documento = "digits"
+# orgao_siglas = "strip"
+# [sources.wraps]
+# orgao_siglas = "tuple"
+# [sources.params]
+# is_pessoa_fisica = true
+# tipo_certidao_id = 1
+
+[outputs]
+status = "fldFFwz6j72y70Pgx"   # STATUS DOCUMENTAÇÃO
+summary = "fldQ41XERpFaWKqyq"  # RESUMO DOCUMENTAÇÃO
+files = "fldvhVf3PpLRVcPVH"    # CERTIDÕES PESSOAIS (multiple attachments)
+
+[status]
+claim_from = ["PENDENTE", "TENTAR NOVAMENTE"]
+processing = "PROCESSANDO"
+done = "FINALIZADO"
+error = "FALHA"

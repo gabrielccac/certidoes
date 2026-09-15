@@ -4,6 +4,7 @@ live/
 experiments/profile/
 __pycache__/
 *.pyc
+*.egg-info/
 .env
 .env.*
 !.env.example

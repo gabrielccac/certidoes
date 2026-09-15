@@ -57,11 +57,13 @@ jobs:
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           enable-cache: true
-          cache-dependency-glob: pyproject.toml
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
 
       - name: Install project dependencies
         shell: pwsh
-        run: uv pip install --system --no-progress -e . playwright
+        run: uv pip install --system --no-progress .
 
       - name: Locate Chrome
         shell: pwsh

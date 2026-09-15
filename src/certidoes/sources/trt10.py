@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import base64
+from collections import Counter
+from functools import lru_cache
 import json
 import os
 import re
@@ -33,6 +35,7 @@ class Trt10Request:
     navigation_timeout_ms: int = 30_000
     render_timeout_ms: int = 15_000
     request_timeout_seconds: int = 30
+    captcha_retries: int = 3
     headless: bool = True
 
 
@@ -52,16 +55,20 @@ def _validate(request: Trt10Request) -> str:
         expected = 11 if request.criterio == "CPF" else 8
         if len(documento) != expected:
             raise CertificateError(SOURCE, "input", "documento_invalido", f"{request.criterio} must contain {expected} digits")
-    if min(request.navigation_timeout_ms, request.render_timeout_ms, request.request_timeout_seconds) <= 0:
+    if min(request.navigation_timeout_ms, request.render_timeout_ms,
+           request.request_timeout_seconds, request.captcha_retries) <= 0:
         raise CertificateError(SOURCE, "input", "timeout_invalido", "timeouts must be greater than zero")
     return documento
 
 
 def _payload(request: Trt10Request) -> dict[str, str]:
+    documento = _digits_only(request.documento)
+    if request.criterio == "CPF" and len(documento) == 11:
+        documento = f"{documento[:3]}.{documento[3:6]}.{documento[6:9]}-{documento[9:]}"
     return {
         "criterioDeEmissao": request.criterio,
         "nome": request.nome.strip(),
-        "numeroDoDocumento": request.documento.strip() if request.criterio != "NOME" else "",
+        "numeroDoDocumento": documento if request.criterio != "NOME" else "",
         "respostaDoReCaptcha": "",
     }
 
@@ -73,10 +80,19 @@ def _headers(extra: dict[str, str] | None = None) -> dict[str, str]:
     return headers
 
 
+@lru_cache(maxsize=1)
+def _ocr_models():
+    import ddddocr
+
+    return (
+        ddddocr.DdddOcr(show_ad=False),
+        ddddocr.DdddOcr(show_ad=False, beta=True),
+    )
+
+
 def _solve_internal_captcha(session, payload: dict[str, str], timeout: int) -> str:
     try:
         import cv2
-        import ddddocr
         import numpy as np
     except ImportError as exc:
         raise CertificateError(SOURCE, "challenge", "ocr_ausente", "Install ddddocr to solve the TRT10 internal CAPTCHA") from exc
@@ -94,28 +110,41 @@ def _solve_internal_captcha(session, payload: dict[str, str], timeout: int) -> s
         if image is None:
             raise ValueError("invalid image")
         height = image.shape[0]
-        crop = image[int(height * 0.44) : int(height * 0.78), :]
-        encoded = cv2.imencode(".png", crop)[1].tobytes()
-        answer = ddddocr.DdddOcr(show_ad=False).classification(encoded).strip().lower()
+        variants = (
+            image[int(height * 0.20) : int(height * 0.85), :],
+            image[int(height * 0.25) : int(height * 0.85), :],
+            image[int(height * 0.30) : int(height * 0.85), :],
+            image[int(height * 0.35) : int(height * 0.90), :],
+        )
+        recognized = []
+        for model in _ocr_models():
+            for variant in variants:
+                encoded = cv2.imencode(".png", variant)[1].tobytes()
+                answer = model.classification(encoded).strip().lower()
+                if re.fullmatch(r"[a-z0-9]{6}", answer):
+                    recognized.append(answer)
     except Exception as exc:
         raise CertificateError(SOURCE, "challenge", "ocr_falhou", "TRT10 CAPTCHA image could not be recognized", retryable=True) from exc
-    if not re.fullmatch(r"[a-z0-9]{6}", answer):
+    answers = [answer for answer, _ in Counter(recognized).most_common()]
+    if not answers:
         raise CertificateError(SOURCE, "challenge", "ocr_invalido", "TRT10 CAPTCHA OCR returned an invalid answer", retryable=True)
-    try:
-        solution = session.post(
-            f"{CAPTCHA_API_URL}/solucao",
-            json=payload,
-            headers=_headers({"PJe-Captcha-Token-Desafio": challenge["token"], "PJe-Captcha-Resposta-Desafio": answer}),
-            timeout=timeout,
-        )
-    except Exception as exc:
-        raise CertificateError(SOURCE, "challenge", "rede_indisponivel", "TRT10 CAPTCHA solution request failed", retryable=True) from exc
-    if solution.status_code >= 400:
-        raise CertificateError(SOURCE, "challenge", "captcha_rejeitado", "TRT10 rejected the CAPTCHA answer", retryable=True, upstream_status=solution.status_code)
-    access = solution.headers.get("PJe-Captcha-Token-Acesso")
-    if not access:
-        raise CertificateError(SOURCE, "challenge", "token_ausente", "TRT10 CAPTCHA solution returned no access token", retryable=True)
-    return access
+    for answer in answers:
+        try:
+            solution = session.post(
+                f"{CAPTCHA_API_URL}/solucao",
+                json=payload,
+                headers=_headers({"PJe-Captcha-Token-Desafio": challenge["token"], "PJe-Captcha-Resposta-Desafio": answer}),
+                timeout=timeout,
+            )
+        except Exception as exc:
+            raise CertificateError(SOURCE, "challenge", "rede_indisponivel", "TRT10 CAPTCHA solution request failed", retryable=True) from exc
+        access = solution.headers.get("PJe-Captcha-Token-Acesso")
+        if solution.status_code < 400 and access:
+            return access
+    raise CertificateError(
+        SOURCE, "challenge", "captcha_rejeitado", "TRT10 rejected the CAPTCHA answers",
+        retryable=True, upstream_status=solution.status_code,
+    )
 
 
 def _emit_api(request: Trt10Request) -> int:
@@ -162,9 +191,24 @@ def _render_pdf(page, destination: Path, timeout_ms: int) -> None:
     partial.replace(destination)
 
 
+def _emit_with_retries(request: Trt10Request) -> int:
+    last_error: CertificateError | None = None
+    for _ in range(request.captcha_retries):
+        try:
+            return _emit_api(request)
+        except CertificateError as exc:
+            if not exc.retryable or exc.stage != "challenge":
+                raise
+            last_error = exc
+    raise last_error or CertificateError(
+        SOURCE, "challenge", "captcha_falhou", "TRT10 CAPTCHA could not be solved",
+        retryable=True,
+    )
+
+
 def generate(request: Trt10Request) -> CertificateResult:
     documento = _validate(request)
-    codigo = _emit_api(request)
+    codigo = _emit_with_retries(request)
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:

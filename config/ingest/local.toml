@@ -1,0 +1,113 @@
+# Unplugged local validation mapping: no table base involved.
+# Job refs carry fields inline, e.g.:
+#   {"label": "docker-validation", "status": "PENDENTE",
+#    "fields": {"documento": "12433377617", "data_nascimento": "2002-05-23"}}
+
+[base]
+id = "local"
+
+[table]
+id = "local"
+
+[provider]
+name = "local"
+
+[[sources]]
+key = "receita-pf"
+label = "Receita CPF"
+source = "receita"
+
+[sources.columns]
+documento = "documento"
+data_nascimento = "data_nascimento"
+
+[sources.transforms]
+documento = "digits"
+
+[sources.params]
+is_pessoa_fisica = true
+
+[[sources]]
+key = "tjdft-civel"
+label = "TJDFT Cível"
+source = "tjdft"
+
+[sources.columns]
+documento = "documento"
+primeiro_nome = "primeiro_nome"
+nome_mae = "nome_mae"
+
+[sources.transforms]
+documento = "digits"
+primeiro_nome = "first_word"
+
+[sources.params]
+tipo_certidao = "CIVEL"
+
+[[sources]]
+key = "trf1-civel-df"
+label = "TRF1 Cível DF"
+source = "trf1"
+
+[sources.columns]
+documento = "documento"
+
+[sources.transforms]
+documento = "digits"
+
+[sources.params]
+is_pessoa_fisica = true
+tipo_certidao_id = 1
+orgao_siglas = ["DF"]
+
+[[sources]]
+key = "fazenda-pf"
+label = "Fazenda DF Pessoa Física"
+source = "fazenda"
+
+[sources.columns]
+documento = "documento"
+
+[sources.transforms]
+documento = "digits"
+
+[sources.params]
+tipo_pessoa = "Pessoa Física"
+finalidade = "Junto ao GDF"
+tipo_certidao = "Certidão de Débitos"
+
+[[sources]]
+key = "trt10-cpf"
+label = "TRT10 CPF"
+source = "trt10"
+
+[sources.columns]
+documento = "documento"
+
+[sources.transforms]
+documento = "digits"
+
+[sources.params]
+criterio = "CPF"
+
+[[sources]]
+key = "tst"
+label = "TST"
+source = "tst"
+
+[sources.columns]
+documento = "documento"
+
+[sources.transforms]
+documento = "digits"
+
+[outputs]
+status = "status"
+summary = "summary"
+files = "files"
+
+[status]
+claim_from = ["PENDENTE"]
+processing = "PROCESSANDO"
+done = "FINALIZADO"
+error = "FALHA"
