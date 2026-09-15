@@ -38,6 +38,48 @@ def selected(headers: dict[str, str]) -> dict[str, str]:
         for key, value in headers.items() if key.lower() in SAFE_HEADERS}
 
 
+# JS installed via page.add_init_script (Playwright-native; verified to fire on
+# CDP-connected pages, unlike a raw Page.addScriptToEvaluateOnNewDocument
+# send which registers but never executes here). It runs before every
+# document/frame load, including the hCaptcha iframes. It only overrides
+# *string/numeric* signals; canvas pixels are deliberately untouched so the
+# run records whether string-level spoofing is sufficient.
+SPOOF_JS_TEMPLATE = """(() => {
+  const VENDOR = __VENDOR__;
+  const RENDERER = __RENDERER__;
+  const maskGL = (proto) => {
+    try {
+      const original = proto.getParameter;
+      const patched = function (param) {
+        if (param === 37445) return VENDOR;
+        if (param === 37446) return RENDERER;
+        return original.call(this, param);
+      };
+      try { Object.defineProperty(patched, 'name', { value: 'getParameter' }); } catch (e) {}
+      patched.toString = original.toString.bind(original);
+      proto.getParameter = patched;
+    } catch (e) {}
+  };
+  try { maskGL(WebGLRenderingContext.prototype); } catch (e) {}
+  try { maskGL(WebGL2RenderingContext.prototype); } catch (e) {}
+  const nav = Object.getPrototypeOf(navigator);
+  try { Object.defineProperty(nav, 'deviceMemory', { configurable: true, get: () => __DEVICE_MEMORY__ }); } catch (e) {}
+  try { Object.defineProperty(nav, 'hardwareConcurrency', { configurable: true, get: () => __HARDWARE_CONCURRENCY__ }); } catch (e) {}
+  try { Object.defineProperty(window.screen, 'availHeight', { configurable: true, get: () => __AVAIL_HEIGHT__ }); } catch (e) {}
+})();"""
+
+
+def render_spoof_js(*, vendor: str, renderer: str, device_memory: int,
+                     hardware_concurrency: int, avail_height: int) -> str:
+    script = SPOOF_JS_TEMPLATE
+    script = script.replace("__VENDOR__", json.dumps(vendor))
+    script = script.replace("__RENDERER__", json.dumps(renderer))
+    script = script.replace("__DEVICE_MEMORY__", str(int(device_memory)))
+    script = script.replace("__HARDWARE_CONCURRENCY__", str(int(hardware_concurrency)))
+    script = script.replace("__AVAIL_HEIGHT__", str(int(avail_height)))
+    return script
+
+
 def environment() -> dict:
     dns = {}
     for host in ("servicos.receitafederal.gov.br", "js.hcaptcha.com"):
@@ -100,6 +142,14 @@ def main() -> int:
     parser.add_argument("--remove-chrome-arg", action="append", default=[], help="Remove one default Chrome flag")
     parser.add_argument("--accept-language", help="Set Chrome profile language before startup")
     parser.add_argument("--windows-ua", action="store_true", help="Diagnostic: send the observed Windows Chrome 152 UA and Client Hints")
+    parser.add_argument("--spoof-pack", action="store_true",
+        help="Install string-level spoofs (WebGL vendor/renderer, deviceMemory, hardwareConcurrency, availHeight) as an init script before navigation")
+    parser.add_argument("--spoof-webgl-vendor", default="Google Inc. (AMD)")
+    parser.add_argument("--spoof-webgl-renderer",
+        default="ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)")
+    parser.add_argument("--spoof-device-memory", type=int, default=32)
+    parser.add_argument("--spoof-hardware-concurrency", type=int, default=16)
+    parser.add_argument("--spoof-avail-height", type=int, default=1032)
     args = parser.parse_args()
     request = r.ReceitaRequest(os.environ["LIVE_DOCUMENT"], os.environ["LIVE_BIRTH"]) if args.verify else None
     document, kind, contributor = r._normalize(request) if request else (None, "CPF", None)
@@ -140,6 +190,22 @@ def main() -> int:
                     "bitness": "64", "wow64": False},
             })
         cdp.send("Network.enable")
+        if args.spoof_pack:
+            script = render_spoof_js(
+                vendor=args.spoof_webgl_vendor,
+                renderer=args.spoof_webgl_renderer,
+                device_memory=args.spoof_device_memory,
+                hardware_concurrency=args.spoof_hardware_concurrency,
+                avail_height=args.spoof_avail_height,
+            )
+            page.add_init_script(script)
+            trace["spoofPack"] = {
+                "webglVendor": args.spoof_webgl_vendor,
+                "webglRenderer": args.spoof_webgl_renderer,
+                "deviceMemory": args.spoof_device_memory,
+                "hardwareConcurrency": args.spoof_hardware_concurrency,
+                "availHeight": args.spoof_avail_height,
+            }
         request_ids: dict[str, int] = {}
 
         def on_cdp_request(item) -> None:
