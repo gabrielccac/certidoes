@@ -1,4 +1,5 @@
 name: Receita browser diagnostic
+run-name: Receita ${{ inputs.mode }} ${{ inputs.request_id }}
 
 # Single dispatch for the Windows worker. Depth is controlled by `mode`:
 # - fingerprint: no secrets needed, records the full browser fingerprint
@@ -21,6 +22,14 @@ on:
         type: choice
         default: fingerprint
         options: [fingerprint, token, verify, issue]
+      request_id:
+        description: "Opaque request identifier"
+        required: false
+        default: ""
+      payload:
+        description: "Encrypted Receita request payload"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -80,20 +89,29 @@ jobs:
         env:
           LIVE_DOCUMENT: ${{ secrets.RECEITA_TEST_DOCUMENT }}
           LIVE_BIRTH: ${{ secrets.RECEITA_TEST_BIRTH }}
+          RECEITA_PAYLOAD: ${{ inputs.payload }}
+          RECEITA_PAYLOAD_PRIVATE_KEY: ${{ secrets.RECEITA_PAYLOAD_PRIVATE_KEY }}
         shell: pwsh
         run: |
           $mode = '${{ inputs.mode }}'
-          if (($mode -ne 'fingerprint') -and ([string]::IsNullOrWhiteSpace($env:LIVE_DOCUMENT) -or [string]::IsNullOrWhiteSpace($env:LIVE_BIRTH))) {
-            throw "Mode '$mode' needs RECEITA_TEST_DOCUMENT and RECEITA_TEST_BIRTH repository secrets"
+          $hasPayload = -not [string]::IsNullOrWhiteSpace($env:RECEITA_PAYLOAD)
+          if (($mode -ne 'fingerprint') -and (-not $hasPayload) -and ([string]::IsNullOrWhiteSpace($env:LIVE_DOCUMENT) -or [string]::IsNullOrWhiteSpace($env:LIVE_BIRTH))) {
+            throw "Mode '$mode' needs an encrypted payload or test repository secrets"
           }
           if ($mode -eq 'issue') {
             if (-not $IsWindows) { Write-Host "Issue mode is Windows-only; skipping Linux matrix job"; exit 0 }
-            $env:LIVE_DOCUMENT = $env:LIVE_DOCUMENT.Trim()
-            $env:LIVE_BIRTH = $env:LIVE_BIRTH.Trim()
+            $document = $env:LIVE_DOCUMENT.Trim()
+            $birth = $env:LIVE_BIRTH.Trim()
             New-Item -ItemType Directory -Force -Path runs/receita-issue, tmp/receita-issue-profile | Out-Null
+            if ($env:RECEITA_PAYLOAD) {
+              python -m certidoes.github_payload decrypt --ciphertext $env:RECEITA_PAYLOAD --output tmp/receita-request.json
+              $request = Get-Content tmp/receita-request.json | ConvertFrom-Json
+              $document = $request.documento
+              $birth = $request.data_nascimento
+            }
             python -m certidoes.sources.receita `
-              --documento $env:LIVE_DOCUMENT `
-              --data-nascimento $env:LIVE_BIRTH `
+              --documento $document `
+              --data-nascimento $birth `
               --output-dir runs/receita-issue `
               --profile tmp/receita-issue-profile
             exit $LASTEXITCODE
@@ -121,7 +139,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: receita-${{ matrix.os }}-${{ inputs.mode }}-${{ github.run_id }}
+          name: receita-${{ matrix.os }}-${{ inputs.mode }}-${{ inputs.request_id }}-${{ github.run_id }}
           path: |
             runs/receita-probe/trace.json
             runs/receita-issue/*.pdf

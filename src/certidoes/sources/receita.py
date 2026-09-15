@@ -2,14 +2,19 @@ from __future__ import annotations
 
 import argparse
 import base64
+import io
 import json
 import os
 import re
 import tempfile
 import time
+import uuid
+import zipfile
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.request import Request as UrlRequest, urlopen
 
 from curl_cffi import requests
 
@@ -259,8 +264,87 @@ def _save(pdf: bytes, destination: Path) -> None:
     partial.replace(destination)
 
 
+def _github_json(method: str, url: str, token: str, payload: dict | None = None) -> dict:
+    body = json.dumps(payload).encode() if payload is not None else None
+    request = UrlRequest(url, data=body, method=method, headers={
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Content-Type": "application/json",
+    })
+    try:
+        with urlopen(request, timeout=30) as response:
+            return json.loads(response.read()) if response.status != 204 else {}
+    except (HTTPError, URLError, TimeoutError) as exc:
+        raise CertificateError(SOURCE, "github", "github_request_failed", "GitHub API request failed", retryable=True) from exc
+
+
+def _github_generate(request: ReceitaRequest, documento: str, tipo: str) -> CertificateResult:
+    repo = os.environ.get("RECEITA_GITHUB_REPO")
+    token = os.environ.get("RECEITA_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    public_key = os.environ.get("RECEITA_GITHUB_PUBLIC_KEY")
+    if not public_key:
+        key_file = Path(__file__).with_name("receita_github_public.pem")
+        if key_file.exists():
+            public_key = key_file.read_text(encoding="ascii")
+    if not repo or not token or not public_key:
+        raise CertificateError(SOURCE, "github", "github_config_missing", "GitHub executor is not configured")
+    if tipo != "CPF":
+        raise CertificateError(SOURCE, "github", "github_only_cpf", "GitHub Receita executor currently supports CPF only")
+
+    from certidoes.github_payload import encrypt
+    request_id = uuid.uuid4().hex
+    encrypted = encrypt({"documento": documento, "data_nascimento": request.data_nascimento}, public_key)
+    workflow = os.environ.get("RECEITA_GITHUB_WORKFLOW", "receita-diagnostic.yml")
+    ref = os.environ.get("RECEITA_GITHUB_REF", "main")
+    api = f"https://api.github.com/repos/{repo}"
+    _github_json("POST", f"{api}/actions/workflows/{workflow}/dispatches", token,
+                 {"ref": ref, "inputs": {"mode": "issue", "request_id": request_id, "payload": encrypted}})
+
+    deadline = time.monotonic() + int(os.environ.get("RECEITA_GITHUB_TIMEOUT_S", "900"))
+    run = None
+    while time.monotonic() < deadline:
+        runs = _github_json("GET", f"{api}/actions/runs?event=workflow_dispatch&branch={ref}&per_page=20", token)
+        for candidate in runs.get("workflow_runs", []):
+            if request_id in str(candidate.get("display_title", "")):
+                run = candidate
+                break
+        if run and run.get("status") == "completed":
+            break
+        time.sleep(float(os.environ.get("RECEITA_GITHUB_POLL_S", "5")))
+    if not run:
+        raise CertificateError(SOURCE, "github", "github_run_not_found", "GitHub workflow run was not found", retryable=True)
+    if run.get("conclusion") != "success":
+        raise CertificateError(SOURCE, "github", "github_run_failed", "GitHub workflow failed", retryable=True)
+
+    artifacts = _github_json("GET", f"{api}/actions/runs/{run['id']}/artifacts", token).get("artifacts", [])
+    artifact = next((item for item in artifacts if request_id in item.get("name", "") and not item.get("expired")), None)
+    if not artifact:
+        raise CertificateError(SOURCE, "github", "github_artifact_missing", "GitHub PDF artifact was not found", retryable=True)
+    download = UrlRequest(artifact["archive_download_url"], headers={
+        "Accept": "application/vnd.github+json", "Authorization": f"Bearer {token}",
+        "X-GitHub-Api-Version": "2022-11-28",
+    })
+    try:
+        with urlopen(download, timeout=60) as response:
+            archive = zipfile.ZipFile(io.BytesIO(response.read()))
+    except (HTTPError, URLError, TimeoutError, zipfile.BadZipFile) as exc:
+        raise CertificateError(SOURCE, "github", "github_artifact_download_failed", "GitHub artifact download failed", retryable=True) from exc
+    pdf_names = [name for name in archive.namelist() if name.lower().endswith(".pdf") and ".." not in Path(name).parts]
+    if len(pdf_names) != 1:
+        raise CertificateError(SOURCE, "artifact", "pdf_ausente", "GitHub artifact did not contain exactly one PDF")
+    pdf = archive.read(pdf_names[0])
+    filename = f"Certid??o Receita Federal - {documento}.pdf"
+    destination = request.output_dir / filename
+    _save(pdf, destination)
+    return CertificateResult(SOURCE, tipo, filename, destination,
+                             {"status": "Emitida", "bytes": len(pdf), "executor": "github", "run_id": run["id"]})
+
+
 def generate(request: ReceitaRequest) -> CertificateResult:
     documento, tipo, contributor = _normalize(request)
+    if os.environ.get("RECEITA_EXECUTOR") == "github":
+        return _github_generate(request, documento, tipo)
     token, user_agent = _fresh_token(request, tipo)
 
     session = requests.Session(impersonate="chrome")
