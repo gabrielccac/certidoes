@@ -51,6 +51,14 @@ RECEITA_GITHUB_TOKEN=<fine-grained token with Actions read/write>
 RECEITA_GITHUB_REF=main
 ```
 
+The repository includes a safe template at `.env.example`. Copy it to a private runtime file such as `.env.receita` and pass it with Docker's `--env-file`; never commit the filled file.
+
 The source encrypts `{documento, data_nascimento}` with the repository's public RSA key, dispatches `issue`, polls the matching run, downloads its PDF artifact, and saves it in the request's `output_dir`. The private key exists only as the `RECEITA_PAYLOAD_PRIVATE_KEY` repository secret. Fixed test secrets are only a manual fallback; production requests use the encrypted payload.
 
 This is asynchronous and currently supports CPF. A request can take several minutes because it waits for a hosted Windows runner and the Receita browser flow. The artifact is temporary transport (seven-day retention in this workflow), not permanent storage; keep the repository private when handling real identities.
+
+## Fazenda/SEFAZ-DF real-estate certificate
+
+The real-estate certificate is provided by `certidoes.sources.fazenda`, not Receita. Use `tipo_pessoa: "Imóvel"`, a property registration document, and a purpose such as `Registro Imobiliário`, `Hipoteca de Imóvel`, or `Alienação de Imóveis`; choose `Certidão de Débitos` or `Certidão da Dívida Ativa`.
+
+This source waits for the solved CAPTCHA marker image (`solved.png`) with OpenCV template matching. It does not solve that challenge with OCR. The TST source is the separate image-CAPTCHA flow that uses `ddddocr`.
