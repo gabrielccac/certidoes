@@ -1,0 +1,71 @@
+name: Receita Windows browser diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: receita-windows-diagnostic
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: windows-2025
+    timeout-minutes: 10
+    env:
+      PYTHONUTF8: "1"
+      PYTHONPATH: src
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install project dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . playwright
+
+      - name: Locate Chrome
+        shell: pwsh
+        run: |
+          $chrome = @(
+            "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+            "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
+          ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+          if (-not $chrome) { throw "Google Chrome was not found on the GitHub Windows runner" }
+          "CHROME_PATH=$chrome" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          & $chrome --version
+
+      - name: Validate hCaptcha through Windows Chrome
+        env:
+          LIVE_DOCUMENT: ${{ secrets.RECEITA_TEST_DOCUMENT }}
+          LIVE_BIRTH: ${{ secrets.RECEITA_TEST_BIRTH }}
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:LIVE_DOCUMENT) -or [string]::IsNullOrWhiteSpace($env:LIVE_BIRTH)) {
+            throw "Set RECEITA_TEST_DOCUMENT and RECEITA_TEST_BIRTH repository secrets"
+          }
+          New-Item -ItemType Directory -Force -Path runs\receita-github, tmp\receita-github-profile | Out-Null
+          python experiments\receita_compare.py `
+            --output runs\receita-github\trace.json `
+            --profile tmp\receita-github-profile `
+            --incognito `
+            --verify `
+            --transport browser
+
+      - name: Upload redacted trace
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: receita-windows-diagnostic-${{ github.run_id }}
+          path: runs/receita-github/trace.json
+          if-no-files-found: warn
+          retention-days: 7

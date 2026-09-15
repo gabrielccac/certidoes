@@ -1,0 +1,896 @@
+{
+  "result": {},
+  "events": [
+    {
+      "atMs": 2172,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "document",
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/",
+      "headers": {
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 2468,
+      "type": "response",
+      "status": 200,
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/",
+      "headers": {
+        "content-type": "text/html"
+      }
+    },
+    {
+      "atMs": 2500,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "script",
+      "url": "https://js.hcaptcha.com/1/api.js",
+      "headers": {
+        "referer": "https://servicos.receitafederal.gov.br/",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 2515,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "script",
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-AATM7B4R.js",
+      "headers": {
+        "origin": "https://servicos.receitafederal.gov.br",
+        "referer": "https://servicos.receitafederal.gov.br/servico/certidoes/",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 2515,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "script",
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-44RK3X5P.js",
+      "headers": {
+        "origin": "https://servicos.receitafederal.gov.br",
+        "referer": "https://servicos.receitafederal.gov.br/servico/certidoes/",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 2515,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "script",
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-HRHJGXSL.js",
+      "headers": {
+        "origin": "https://servicos.receitafederal.gov.br",
+        "referer": "https://servicos.receitafederal.gov.br/servico/certidoes/",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 2515,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "script",
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-67TEWLEX.js",
+      "headers": {
+        "origin": "https://servicos.receitafederal.gov.br",
+        "referer": "https://servicos.receitafederal.gov.br/servico/certidoes/",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 2515,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "script",
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-QTOOOGJX.js",
+      "headers": {
+        "origin": "https://servicos.receitafederal.gov.br",
+        "referer": "https://servicos.receitafederal.gov.br/servico/certidoes/",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 2515,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "script",
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-3ENMYILF.js",
+      "headers": {
+        "origin": "https://servicos.receitafederal.gov.br",
+        "referer": "https://servicos.receitafederal.gov.br/servico/certidoes/",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 2515,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "script",
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-TWZW5B45.js",
+      "headers": {
+        "origin": "https://servicos.receitafederal.gov.br",
+        "referer": "https://servicos.receitafederal.gov.br/servico/certidoes/",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 2515,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "script",
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/polyfills-SCHOHYNV.js",
+      "headers": {
+        "origin": "https://servicos.receitafederal.gov.br",
+        "referer": "https://servicos.receitafederal.gov.br/servico/certidoes/",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 2515,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "script",
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/scripts-JOLETPVE.js",
+      "headers": {
+        "referer": "https://servicos.receitafederal.gov.br/servico/certidoes/",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 2515,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "script",
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/main-PDLHEFWG.js",
+      "headers": {
+        "origin": "https://servicos.receitafederal.gov.br",
+        "referer": "https://servicos.receitafederal.gov.br/servico/certidoes/",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 2578,
+      "type": "response",
+      "status": 200,
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-AATM7B4R.js",
+      "headers": {
+        "content-type": "application/javascript"
+      }
+    },
+    {
+      "atMs": 2672,
+      "type": "response",
+      "status": 200,
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-44RK3X5P.js",
+      "headers": {
+        "content-type": "application/javascript"
+      }
+    },
+    {
+      "atMs": 2750,
+      "type": "response",
+      "status": 200,
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-3ENMYILF.js",
+      "headers": {
+        "content-type": "application/javascript"
+      }
+    },
+    {
+      "atMs": 2750,
+      "type": "response",
+      "status": 200,
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-TWZW5B45.js",
+      "headers": {
+        "content-type": "application/javascript"
+      }
+    },
+    {
+      "atMs": 2750,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "stylesheet",
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/styles-3T3KXPQ5.css",
+      "headers": {
+        "referer": "https://servicos.receitafederal.gov.br/servico/certidoes/",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 2812,
+      "type": "response",
+      "status": 200,
+      "url": "https://js.hcaptcha.com/1/api.js",
+      "headers": {
+        "content-type": "application/javascript"
+      }
+    },
+    {
+      "atMs": 2859,
+      "type": "response",
+      "status": 200,
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-67TEWLEX.js",
+      "headers": {
+        "content-type": "application/javascript"
+      }
+    },
+    {
+      "atMs": 2875,
+      "type": "response",
+      "status": 200,
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/polyfills-SCHOHYNV.js",
+      "headers": {
+        "content-type": "application/javascript"
+      }
+    },
+    {
+      "atMs": 2890,
+      "type": "response",
+      "status": 200,
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/main-PDLHEFWG.js",
+      "headers": {
+        "content-type": "application/javascript"
+      }
+    },
+    {
+      "atMs": 3000,
+      "type": "response",
+      "status": 200,
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/styles-3T3KXPQ5.css",
+      "headers": {
+        "content-type": "text/css"
+      }
+    },
+    {
+      "atMs": 3078,
+      "type": "response",
+      "status": 200,
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-QTOOOGJX.js",
+      "headers": {
+        "content-type": "application/javascript"
+      }
+    },
+    {
+      "atMs": 4328,
+      "type": "response",
+      "status": 200,
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/scripts-JOLETPVE.js",
+      "headers": {
+        "content-type": "application/javascript"
+      }
+    },
+    {
+      "atMs": 6093,
+      "type": "response",
+      "status": 200,
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-HRHJGXSL.js",
+      "headers": {
+        "content-type": "application/javascript"
+      }
+    },
+    {
+      "atMs": 6187,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "xhr",
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/api/env",
+      "headers": {
+        "accept": "application/json, text/plain, */*",
+        "referer": "https://servicos.receitafederal.gov.br/servico/certidoes/",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 6203,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "fetch",
+      "url": "https://7d59eab995e.w.hcaptcha.com/logo.png",
+      "headers": {
+        "referer": "https://servicos.receitafederal.gov.br/",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 6328,
+      "type": "response",
+      "status": 200,
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/api/env",
+      "headers": {
+        "content-type": "application/json; charset=utf-8"
+      }
+    },
+    {
+      "atMs": 6328,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "xhr",
+      "url": "https://servicos.receitafederal.gov.br/multiplos-portais/health/ready",
+      "headers": {
+        "accept": "application/json, text/plain, */*",
+        "referer": "https://servicos.receitafederal.gov.br/servico/certidoes/",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 6328,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "script",
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-QM2TVCM6.js",
+      "headers": {
+        "origin": "https://servicos.receitafederal.gov.br",
+        "referer": "https://servicos.receitafederal.gov.br/servico/certidoes/main-PDLHEFWG.js",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 6328,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "script",
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-HUWAJ2OX.js",
+      "headers": {
+        "origin": "https://servicos.receitafederal.gov.br",
+        "referer": "https://servicos.receitafederal.gov.br/servico/certidoes/main-PDLHEFWG.js",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 6343,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "font",
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/media/fa-solid-900-ABTK6BNK.woff2",
+      "headers": {
+        "origin": "https://servicos.receitafederal.gov.br",
+        "referer": "https://servicos.receitafederal.gov.br/servico/certidoes/",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 6468,
+      "type": "response",
+      "status": 200,
+      "url": "https://servicos.receitafederal.gov.br/multiplos-portais/health/ready",
+      "headers": {
+        "content-type": "text/plain"
+      }
+    },
+    {
+      "atMs": 6468,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "script",
+      "url": "https://servicos.receitafederal.gov.br/webcomponents/v2/main.js",
+      "headers": {
+        "referer": "https://servicos.receitafederal.gov.br/servico/certidoes/",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 6468,
+      "type": "response",
+      "status": 200,
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-QM2TVCM6.js",
+      "headers": {
+        "content-type": "application/javascript"
+      }
+    },
+    {
+      "atMs": 6468,
+      "type": "response",
+      "status": 200,
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-HUWAJ2OX.js",
+      "headers": {
+        "content-type": "application/javascript"
+      }
+    },
+    {
+      "atMs": 6468,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "script",
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-NTXXKRUK.js",
+      "headers": {
+        "origin": "https://servicos.receitafederal.gov.br",
+        "referer": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-HUWAJ2OX.js",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 6468,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "script",
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-5CVI44IF.js",
+      "headers": {
+        "origin": "https://servicos.receitafederal.gov.br",
+        "referer": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-HUWAJ2OX.js",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 6468,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "script",
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-XNLJQEXB.js",
+      "headers": {
+        "origin": "https://servicos.receitafederal.gov.br",
+        "referer": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-HUWAJ2OX.js",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 6468,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "script",
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-YXXWXBNK.js",
+      "headers": {
+        "origin": "https://servicos.receitafederal.gov.br",
+        "referer": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-HUWAJ2OX.js",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 6468,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "script",
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-SKRFASQK.js",
+      "headers": {
+        "origin": "https://servicos.receitafederal.gov.br",
+        "referer": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-HUWAJ2OX.js",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 6468,
+      "type": "response",
+      "status": 200,
+      "url": "https://7d59eab995e.w.hcaptcha.com/logo.png",
+      "headers": {
+        "content-type": "image/png"
+      }
+    },
+    {
+      "atMs": 6531,
+      "type": "response",
+      "status": 200,
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-NTXXKRUK.js",
+      "headers": {
+        "content-type": "application/javascript"
+      }
+    },
+    {
+      "atMs": 6531,
+      "type": "response",
+      "status": 200,
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-YXXWXBNK.js",
+      "headers": {
+        "content-type": "application/javascript"
+      }
+    },
+    {
+      "atMs": 6531,
+      "type": "response",
+      "status": 200,
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-5CVI44IF.js",
+      "headers": {
+        "content-type": "application/javascript"
+      }
+    },
+    {
+      "atMs": 6531,
+      "type": "response",
+      "status": 200,
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-XNLJQEXB.js",
+      "headers": {
+        "content-type": "application/javascript"
+      }
+    },
+    {
+      "atMs": 6593,
+      "type": "response",
+      "status": 200,
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/chunk-SKRFASQK.js",
+      "headers": {
+        "content-type": "application/javascript"
+      }
+    },
+    {
+      "atMs": 6672,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "script",
+      "url": "https://js.hcaptcha.com/1/api.js",
+      "headers": {
+        "referer": "https://servicos.receitafederal.gov.br/",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 6843,
+      "type": "response",
+      "status": 200,
+      "url": "https://js.hcaptcha.com/1/api.js",
+      "headers": {
+        "content-type": "application/javascript"
+      }
+    },
+    {
+      "atMs": 6890,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "document",
+      "url": "https://newassets.hcaptcha.com/captcha/v1/481ef825909d36ec3d5777ef46cc1c8557f3555e/static/hcaptcha.html",
+      "headers": {
+        "referer": "https://servicos.receitafederal.gov.br/",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 6890,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "document",
+      "url": "https://newassets.hcaptcha.com/captcha/v1/481ef825909d36ec3d5777ef46cc1c8557f3555e/static/hcaptcha.html",
+      "headers": {
+        "referer": "https://servicos.receitafederal.gov.br/",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 6906,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "fetch",
+      "url": "https://1b80a2dcad89.w.hcaptcha.com/logo.png",
+      "headers": {
+        "referer": "https://servicos.receitafederal.gov.br/",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 7078,
+      "type": "response",
+      "status": 200,
+      "url": "https://newassets.hcaptcha.com/captcha/v1/481ef825909d36ec3d5777ef46cc1c8557f3555e/static/hcaptcha.html",
+      "headers": {
+        "content-type": "text/html"
+      }
+    },
+    {
+      "atMs": 7093,
+      "type": "response",
+      "status": 200,
+      "url": "https://newassets.hcaptcha.com/captcha/v1/481ef825909d36ec3d5777ef46cc1c8557f3555e/static/hcaptcha.html",
+      "headers": {
+        "content-type": "text/html"
+      }
+    },
+    {
+      "atMs": 7187,
+      "type": "response",
+      "status": 200,
+      "url": "https://1b80a2dcad89.w.hcaptcha.com/logo.png",
+      "headers": {
+        "content-type": "image/png"
+      }
+    },
+    {
+      "atMs": 7453,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "fetch",
+      "url": "https://ab07f8584307.w.hcaptcha.com/logo.png",
+      "headers": {
+        "referer": "https://newassets.hcaptcha.com/",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 7562,
+      "type": "request",
+      "method": "POST",
+      "resourceType": "xhr",
+      "url": "https://api.hcaptcha.com/checksiteconfig",
+      "headers": {
+        "accept": "application/json",
+        "content-type": "text/plain",
+        "referer": "https://newassets.hcaptcha.com/",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 7672,
+      "type": "response",
+      "status": 200,
+      "url": "https://ab07f8584307.w.hcaptcha.com/logo.png",
+      "headers": {
+        "content-type": "image/png"
+      }
+    },
+    {
+      "atMs": 7703,
+      "type": "response",
+      "status": 200,
+      "url": "https://api.hcaptcha.com/checksiteconfig",
+      "headers": {
+        "content-type": "application/json"
+      }
+    },
+    {
+      "atMs": 7703,
+      "type": "request",
+      "method": "GET",
+      "resourceType": "script",
+      "url": "https://newassets.hcaptcha.com/c/bccffb864db7aa9515de6cd976bb69d85ce644d90784bdcbe8e56edb0e016b77/hsw.js",
+      "headers": {
+        "referer": "https://newassets.hcaptcha.com/captcha/v1/481ef825909d36ec3d5777ef46cc1c8557f3555e/static/hcaptcha.html",
+        "sec-ch-ua": "\"Chromium\";v=\"152\", \"Not?A_Brand\";v=\"24\", \"Google Chrome\";v=\"152\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+      },
+      "postBytes": 0
+    },
+    {
+      "atMs": 7843,
+      "type": "response",
+      "status": 200,
+      "url": "https://servicos.receitafederal.gov.br/servico/certidoes/media/fa-solid-900-ABTK6BNK.woff2",
+      "headers": {
+        "content-type": "font/woff2"
+      }
+    },
+    {
+      "atMs": 8125,
+      "type": "response",
+      "status": 200,
+      "url": "https://newassets.hcaptcha.com/c/bccffb864db7aa9515de6cd976bb69d85ce644d90784bdcbe8e56edb0e016b77/hsw.js",
+      "headers": {
+        "content-type": "application/javascript"
+      }
+    },
+    {
+      "atMs": 10953,
+      "type": "response",
+      "status": 200,
+      "url": "https://api.hcaptcha.com/getcaptcha/4a65992d-58fc-4812-8b87-789f7e7c4c4b",
+      "headers": {
+        "content-type": "application/octet-stream"
+      }
+    }
+  ],
+  "fingerprint": {
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+    "platform": "Win32",
+    "uaData": {
+      "architecture": "x86",
+      "bitness": "64",
+      "brands": [
+        {
+          "brand": "Chromium",
+          "version": "152"
+        },
+        {
+          "brand": "Not?A_Brand",
+          "version": "24"
+        },
+        {
+          "brand": "Google Chrome",
+          "version": "152"
+        }
+      ],
+      "fullVersionList": [
+        {
+          "brand": "Chromium",
+          "version": "152.0.7977.84"
+        },
+        {
+          "brand": "Not?A_Brand",
+          "version": "24.0.0.0"
+        },
+        {
+          "brand": "Google Chrome",
+          "version": "152.0.7977.84"
+        }
+      ],
+      "mobile": false,
+      "model": "",
+      "platform": "Windows",
+      "platformVersion": "19.0.0",
+      "uaFullVersion": "152.0.7977.84"
+    },
+    "language": "pt-BR",
+    "languages": [
+      "pt-BR",
+      "pt",
+      "en-US",
+      "en"
+    ],
+    "timezone": "America/Sao_Paulo",
+    "hardwareConcurrency": 16,
+    "deviceMemory": 32,
+    "maxTouchPoints": 0,
+    "webdriver": false,
+    "pdfViewerEnabled": true,
+    "plugins": [
+      "PDF Viewer",
+      "Chrome PDF Viewer",
+      "Chromium PDF Viewer",
+      "Microsoft Edge PDF Viewer",
+      "WebKit built-in PDF"
+    ],
+    "mimeTypes": [
+      "application/pdf",
+      "text/pdf"
+    ],
+    "screen": {
+      "width": 1920,
+      "height": 1080,
+      "availWidth": 1920,
+      "availHeight": 1032,
+      "colorDepth": 24,
+      "pixelDepth": 24,
+      "dpr": 1
+    },
+    "window": {
+      "innerWidth": 929,
+      "innerHeight": 917,
+      "outerWidth": 945,
+      "outerHeight": 1012
+    },
+    "webgl": {
+      "available": true,
+      "vendor": "Google Inc. (AMD)",
+      "renderer": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+    },
+    "canvasHash": "9fd5e1debd9e0235f60a10b3475fb9dd5fb223bcd4c336bdedff00c4423e3aee",
+    "fonts": {
+      "Arial": true,
+      "Times New Roman": true,
+      "Courier New": true,
+      "Noto Sans": true,
+      "Segoe UI": true,
+      "Liberation Sans": true
+    }
+  },
+  "browser": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/152.0.7977.84",
+    "revision": "@4334922f44c77b1208072c4deac29db3af39bbea",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+    "jsVersion": "15.2.124.21"
+  },
+  "argumentsError": "Error",
+  "elapsedMs": 10953
+}

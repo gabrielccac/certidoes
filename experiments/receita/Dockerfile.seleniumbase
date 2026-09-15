@@ -1,0 +1,8 @@
+FROM certidoes-cdp
+
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3-tk python3-dev \
+    && pip install --no-cache-dir seleniumbase \
+    && rm -rf /var/lib/apt/lists/*
+USER certidoes
