@@ -4,6 +4,7 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,8 @@ from certidoes import registry
 from certidoes.errors import CertificateError
 from certidoes.ingest import mapping
 from certidoes.ingest import worker as worker_mod
+from certidoes.ingest import airtable as airtable_mod
+from certidoes.ingest.airtable_provider import AirtableProvider
 from certidoes.ingest.airtable import attachment_objects
 from certidoes.ingest.artifacts import LocalPublicDir
 from certidoes.ingest.core import run_job
@@ -104,6 +107,65 @@ def test_summary_and_status():
 
 def test_attachment_objects():
     assert attachment_objects(["https://x/f/a.pdf"]) == [{"url": "https://x/f/a.pdf"}]
+
+
+def test_airtable_provider_roundtrip_against_local_server(monkeypatch, tmp_path):
+    class Handler(BaseHTTPRequestHandler):
+        state = {"fldS": "PENDENTE", "fld1": "111"}
+        patches = []
+
+        def _json(self, body, status=200):
+            encoded = json.dumps(body).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def do_GET(self):
+            assert self.headers["Authorization"] == "Bearer test-token"
+            self._json({"id": "recX", "fields": dict(self.state)})
+
+        def do_PATCH(self):
+            size = int(self.headers["Content-Length"])
+            payload = json.loads(self.rfile.read(size))
+            self.patches.append(payload["fields"])
+            self.state.update(payload["fields"])
+            self._json({"id": "recX", "fields": dict(self.state)})
+
+        def log_message(self, *_args):
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setattr(airtable_mod, "BASE_URL", f"http://127.0.0.1:{server.server_port}/v0")
+    try:
+        pdf = tmp_path / "a.pdf"
+        pdf.write_bytes(b"%PDF-1.4 fake")
+
+        def generate(_request):
+            return CertificateResult("stub", "CPF", "c.pdf", pdf)
+
+        monkeypatch.setitem(
+            registry._CACHE, "stub",
+            registry.SourceSpec("stub", _FakeRequest, generate),
+        )
+        provider = AirtableProvider(token="test-token", default_base_id="appX")
+        store = LocalPublicDir(tmp_path / "served", "https://files.example.test")
+        report = run_job(
+            provider, _fake_mapping(), {"record_id": "recX", "table_id": "tblX"},
+            store, tmp_path / "out",
+        )
+
+        assert report.status == "FINALIZADO"
+        assert Handler.patches[0] == {"fldS": "PROCESSANDO"}
+        assert Handler.patches[1]["fldS"] == "FINALIZADO"
+        assert "One" in Handler.patches[1]["fldE"]
+        assert Handler.patches[1]["fldF"][0]["url"].startswith("https://files.example.test/files/")
+    finally:
+        server.shutdown()
+        thread.join(timeout=2)
 
 
 def test_artifact_store_roundtrip(tmp_path):
