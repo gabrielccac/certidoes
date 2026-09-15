@@ -1,6 +1,6 @@
 # Windows GitHub Actions diagnostic
 
-The workflow `.github/workflows/receita-diagnostic.yml` runs the same CDP helper in parallel on hosted Windows and Linux VMs and stops after `POST /api/Emissao/verificar`. Select `fingerprint`, `token`, or `verify` when dispatching it. They never call `/api/Emissao` and never write a token, CPF, birth date, cookie, or PDF.
+The workflow `.github/workflows/receita-diagnostic.yml` runs the same CDP helper in parallel on hosted Windows and Linux VMs and stops after `POST /api/Emissao/verificar` for diagnostic modes. Select `fingerprint`, `token`, `verify`, or `issue` when dispatching it. `issue` is Windows-only and runs the complete Receita flow, including `/api/Emissao`, then uploads the test PDF.
 
 Create two repository secrets:
 
@@ -21,3 +21,21 @@ Interpretation:
 - Windows runner also returns `CaptchaFalhaValidacao`: the remaining cause is likely upstream IP/reputation, test identity state, or time-dependent hCaptcha scoring; GitHub Actions is not a production workaround.
 
 GitHub-hosted Windows runners are useful because they provide a real Windows browser/runtime without a dedicated machine, but they are not a stable identity. For production, the durable options are a small Windows VM/worker or an authenticated remote browser service. A Linux container cannot inherit Windows kernel, graphics, font rasterization, or Chrome internals.
+
+## Polling the generated PDF
+
+For the authorized test secrets, start an issue run from the Actions tab or CLI:
+
+```powershell
+gh workflow run receita-diagnostic.yml --repo gabrielccac/certidoes --ref main -f mode=issue
+```
+
+After obtaining the run ID, poll and copy the single PDF artifact locally:
+
+```powershell
+python scripts/poll_receita_run.py --repo gabrielccac/certidoes --run-id RUN_ID --output-dir runs/receita
+```
+
+The helper waits for completion, downloads the artifact to a temporary directory, copies the PDF to `runs/receita`, and removes its temporary copy. The remote artifact remains until its configured retention expires or it is explicitly deleted. This is suitable for low-volume asynchronous jobs; it is not a synchronous HTTP request path because runner startup and hCaptcha can take a minute or more.
+
+The issue artifact contains a real certificate for the supplied test identity. Keep the repository and artifact permissions private for production identities, reduce `retention-days`, or delete the artifact after successful download.
