@@ -37,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-2025]
+        os: [blacksmith-2vcpu-windows-2025]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     env:
