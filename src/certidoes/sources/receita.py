@@ -464,6 +464,8 @@ def _browser_generate(request: ReceitaRequest, documento: str, tipo: str, contri
             page.goto(PAGE_URLS[tipo], wait_until="domcontentloaded", timeout=request.token_timeout_ms)
             _log("page_ready")
             _trace_captcha(page, captures, "page_ready")
+            page.add_locator_handler(page.get_by_role("button", name="Aceitar", exact=True),
+                                     lambda consent: consent.click(), times=1)
             rounds = 0
             deadline = time.monotonic() + request.token_timeout_ms / 1000
             while vis_modal(page):

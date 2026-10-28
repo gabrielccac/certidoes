@@ -311,6 +311,42 @@ def test_normalizes_formatted_cpf():
     assert _normalize(ReceitaRequest("124.333.776-17", "2002-05-23")) == ("12433377617", "CPF", "PF")
 
 
+def test_late_cookie_banner_is_dismissed_before_form_action(monkeypatch, tmp_path):
+    import base64
+
+    monkeypatch.delenv("RECEITA_EXECUTOR", raising=False)
+    monkeypatch.setattr(receita, "_trace_captcha", lambda *args: None)
+    monkeypatch.setattr(hcaptcha, "vis_modal", lambda page: [])
+    page, consent, submit = Mock(), Mock(), Mock()
+    page.get_by_role.side_effect = lambda role, name, exact: consent if name == "Aceitar" else submit
+    handlers, events = {}, {}
+    page.add_locator_handler.side_effect = lambda locator, handler, **kwargs: handlers.update({locator: handler})
+    page.on.side_effect = lambda name, callback: events.update({name: callback})
+
+    def fill(value):
+        # The banner appears after navigation, during the first form action.
+        if not consent.click.called:
+            handlers[consent](consent)
+        assert consent.click.called
+
+    page.locator.return_value.fill.side_effect = fill
+    submit.click.side_effect = lambda **kwargs: events["response"](SimpleNamespace(
+        url=receita.VERIFICAR_URL, request=SimpleNamespace(method="POST"),
+        status=200, json=lambda: {"status": "Emitida"}))
+    pdf = b"%PDF-1.4 cookie banner handled"
+    page.evaluate.return_value = {"status": 200, "data": {"pdf": base64.b64encode(pdf).decode()}}
+
+    @contextmanager
+    def browser(request):
+        yield page
+
+    monkeypatch.setattr(receita, "_browser", browser)
+    result = receita.generate(ReceitaRequest("12433377617", "2002-05-23", output_dir=tmp_path))
+    assert result.pdf_path.read_bytes() == pdf
+    consent.click.assert_called_once()
+    submit.click.assert_called_once()
+
+
 def test_windows_form_waits_for_visual_solver_before_verification(monkeypatch, tmp_path, capsys):
     import base64
 
