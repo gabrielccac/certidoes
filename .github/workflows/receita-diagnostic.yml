@@ -1,5 +1,5 @@
-name: Receita Pure CDP and Android AVD
-run-name: Receita Android ${{ inputs.request_id }}
+name: Receita Chrome 133 desktop control
+run-name: Receita desktop 133 ${{ inputs.request_id }}
 
 on:
   workflow_dispatch:
@@ -47,7 +47,7 @@ jobs:
           $platform = '${{ matrix.platform }}'
           $archive = Join-Path $env:RUNNER_TEMP 'receita-chrome.zip'
           $destination = Join-Path $env:RUNNER_TEMP 'receita-chrome'
-          Invoke-WebRequest "https://storage.googleapis.com/chrome-for-testing-public/155.0.8059.84/$platform/chrome-$platform.zip" -OutFile $archive
+          Invoke-WebRequest "https://storage.googleapis.com/chrome-for-testing-public/133.0.6943.141/$platform/chrome-$platform.zip" -OutFile $archive
           if ($IsWindows) {
             Expand-Archive -LiteralPath $archive -DestinationPath $destination
             $chrome = Join-Path $destination 'chrome-win64/chrome.exe'
@@ -92,52 +92,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 1
 
-  android-avd:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    env:
-      PYTHONPATH: src
-      PYTHONUNBUFFERED: '1'
-      RECEITA_PAYLOAD: ${{ inputs.payload }}
-      RECEITA_PAYLOAD_PRIVATE_KEY: ${{ secrets.RECEITA_PAYLOAD_PRIVATE_KEY }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
-        with:
-          python-version: '3.12'
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
-      - name: Install Pure CDP dependencies
-        run: uv pip install --system --no-progress seleniumbase==4.56.4 requests curl_cffi cryptography pypdf==6.21.3
-      - name: Enable KVM on this disposable worker
-        run: sudo chmod a+rw /dev/kvm
-      - name: Run actual Android with its native Chrome browser
-        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
-        with:
-          api-level: 36
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          cores: 2
-          ram-size: 3072M
-          disk-size: 4096M
-          emulator-options: -no-window -gpu swiftshader -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
-          emulator-boot-timeout: 600
-          disable-animations: true
-          enable-hw-keyboard: true
-          script: python -m experiments.receita_environment_probe.android
-      - name: Upload Android facts and redacted results only
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: pure-cdp-android-${{ inputs.request_id }}
-          path: |
-            runs/pure-cdp-android/android.json
-            runs/pure-cdp-android/*/result.json
-          if-no-files-found: warn
-          retention-days: 1
-
   docker-desktop:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -146,7 +100,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Build the isolated Pure CDP image
-        run: docker build --file experiments/receita_environment_probe/Dockerfile.pure-cdp --tag receita-pure-cdp:probe .
+        run: docker build --file experiments/receita_environment_probe/Dockerfile.pure-cdp --tag receita-pure-cdp:probe --build-arg CHROME_VERSION=133.0.6943.141 .
       - name: Exercise the official form inside Docker and Xvfb
         env:
           RECEITA_PAYLOAD: ${{ inputs.payload }}

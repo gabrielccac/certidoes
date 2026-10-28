@@ -1,4 +1,5 @@
 FROM python:3.12-slim-bookworm
+ARG CHROME_VERSION=155.0.8059.84
 
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONPATH=/app/src \
     HOME=/home/receita DISPLAY=:99 XDG_SESSION_TYPE=x11 \
@@ -15,11 +16,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN python - <<'PY'
 from pathlib import Path
-import urllib.request, zipfile
+import os, urllib.request, zipfile
 root = Path('/opt/chrome')
 root.mkdir()
 archive = root / 'chrome.zip'
-urllib.request.urlretrieve('https://storage.googleapis.com/chrome-for-testing-public/155.0.8059.84/linux64/chrome-linux64.zip', archive)
+chrome_version = os.environ['CHROME_VERSION']
+urllib.request.urlretrieve(f'https://storage.googleapis.com/chrome-for-testing-public/{chrome_version}/linux64/chrome-linux64.zip', archive)
 with zipfile.ZipFile(archive) as handle:
     handle.extractall(root)
 for name in ('chrome', 'chrome_crashpad_handler'):
