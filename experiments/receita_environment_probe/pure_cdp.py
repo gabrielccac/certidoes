@@ -138,26 +138,41 @@ def run(request: receita.ReceitaRequest, *, android_port: int | None, single_sdk
             };
         })()""")
         sb.click_if_visible('button:contains("Aceitar")')
-        if android_port:
-            sb.clear('input[name="niContribuinte"]')
-            sb.press_keys('input[name="niContribuinte"]', document)
-        else:
-            sb.type('input[name="niContribuinte"]', document)
         formatted_birth = ""
         if kind == "CPF":
             year, month, day = request.data_nascimento.split("-")
             formatted_birth = f"{day}/{month}/{year}"
+
+        def fill(selector: str, value: str):
             if android_port:
-                sb.clear('input[name="dataNascimento"]')
-                sb.press_keys('input[name="dataNascimento"]', formatted_birth)
+                sb.clear(selector)
+                sb.press_keys(selector, value)
             else:
-                sb.type('input[name="dataNascimento"]', formatted_birth)
-        report["form_state"] = sb.evaluate("""(() => ({
-            document_matches:document.querySelector('input[name="niContribuinte"]').value.replace(/\\D/g,'')===""" + json.dumps(document) + """,
-            birth_matches:document.querySelector('input[name="dataNascimento"]')?.value===""" + json.dumps(formatted_birth) + """,
-            birth_length:document.querySelector('input[name="dataNascimento"]')?.value.length,
-            form_invalid:!!document.querySelector('form.ng-invalid'),
-            focus:document.hasFocus(),visibility:document.visibilityState}))()""")
+                sb.type(selector, value)
+
+        def read_form() -> dict:
+            return sb.evaluate("""(() => ({
+                document_matches:document.querySelector('input[name="niContribuinte"]').value.replace(/\\D/g,'')===""" + json.dumps(document) + """,
+                birth_matches:document.querySelector('input[name="dataNascimento"]')?.value===""" + json.dumps(formatted_birth) + """,
+                birth_length:document.querySelector('input[name="dataNascimento"]')?.value.length,
+                form_invalid:!!document.querySelector('form.ng-invalid'),
+                focus:document.hasFocus(),visibility:document.visibilityState}))()""")
+
+        # Android key events into the masked inputs occasionally drop a character; retype only the wrong field.
+        fill('input[name="niContribuinte"]', document)
+        if formatted_birth:
+            fill('input[name="dataNascimento"]', formatted_birth)
+        for attempt in range(4):
+            report["form_state"] = read_form()
+            document_ok = report["form_state"]["document_matches"]
+            birth_ok = not formatted_birth or report["form_state"]["birth_matches"]
+            if (document_ok and birth_ok) or attempt == 3:
+                break
+            report["form_retypes"] = attempt + 1
+            if not document_ok:
+                fill('input[name="niContribuinte"]', document)
+            if not birth_ok:
+                fill('input[name="dataNascimento"]', formatted_birth)
         assert report["form_state"]["document_matches"], "Form document mismatch"
         assert kind != "CPF" or report["form_state"]["birth_matches"], "Form birth mismatch"
         def dismiss_cookie_banner():

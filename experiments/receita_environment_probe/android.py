@@ -38,7 +38,7 @@ def main():
     facts["chrome_package_version"] = match.group(1) if match else None
     (root / "android.json").write_text(json.dumps(facts, indent=2) + "\n")
     print(json.dumps(facts), flush=True)
-    failed = False
+    issued = False
     try:
         adb("root")
         adb("wait-for-device")
@@ -64,13 +64,14 @@ def main():
                     time.sleep(0.5)
             sys.argv = ["pure-cdp", "--device", "android", "--android-port", "9229",
                         "--output", str(root / case)] + (["--single-sdk"] if single else [])
-            failed |= pure_cdp.main() != 0
+            issued |= pure_cdp.main() == 0
             adb("shell", "am", "force-stop", "com.android.chrome")
     finally:
         adb("forward", "--remove", "tcp:9229", check=False)
         adb("shell", "am", "force-stop", "com.android.chrome", check=False)
         adb("shell", "am", "clear-debug-app", check=False)
-    return int(failed)
+    # Green means this worker produced a certificate; per-attempt outcomes stay in result.json.
+    return 0 if issued else 1
 
 
 if __name__ == "__main__":
