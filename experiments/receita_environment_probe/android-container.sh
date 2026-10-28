@@ -12,6 +12,7 @@ cat > "$receita_sdk/emulator/emulator" <<'WRAPPER'
 set -euo pipefail
 receita_sdk="${ANDROID_HOME:?}"
 exec docker run --rm --name receita-android-avd --device /dev/kvm --network host \
+  --user "$(id -u):$(id -g)" \
   --cpus 2 --memory 4g --shm-size 1g --cap-drop ALL --security-opt no-new-privileges \
   --env ANDROID_HOME --env ANDROID_SDK_ROOT \
   --env "ANDROID_AVD_HOME=$HOME/.android/avd" \

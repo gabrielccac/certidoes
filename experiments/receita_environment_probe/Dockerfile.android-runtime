@@ -6,5 +6,6 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
     libxcursor1 libxi6 libxtst6 libsm6 libice6 libfontconfig1 libfreetype6 libtinfo6 \
     libvulkan1 procps \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /tmp/receita-android-home
+    && mkdir -p /tmp/receita-android-home \
+    && chmod 1777 /tmp/receita-android-home
 ENV HOME=/tmp/receita-android-home
