@@ -8,6 +8,63 @@ import pytest
 from experiments.receita_direct_cdp_probe.client import CommandError, DirectChrome
 
 
+def test_unused_chrome133_extra_info_does_not_break_command_response(monkeypatch):
+    event = {"method": "Network.requestWillBeSentExtraInfo", "params": {
+        "requestId": "sample", "associatedCookies": [], "headers": {},
+        "connectTiming": {"requestTime": 1}, "clientSecurityState": {
+            "initiatorIsSecureContext": True, "initiatorIPAddressSpace": "Local",
+            "privateNetworkRequestPolicy": "Allow"}}}
+    with pytest.raises(ValueError, match="LocalNetworkAccessRequestPolicy"):
+        mycdp.util.parse_json_event(event)
+    c = client_with_messages(monkeypatch, [event, {"id": 1, "result": {"ok": True}}])
+    c.add_handler(mycdp.network.ResponseReceived, lambda event: None)
+    try:
+        assert c.call("Runtime.evaluate") == {"ok": True}
+    finally:
+        c.quit()
+
+
+def test_invalid_required_event_is_reported_instead_of_silently_ignored(monkeypatch):
+    c = client_with_messages(monkeypatch, [{"method": "Network.loadingFinished", "params": {"requestId": "sample"}}])
+    c.add_handler(mycdp.network.LoadingFinished, lambda event: None)
+    try:
+        with pytest.raises(CommandError) as error:
+            c.call("Runtime.evaluate")
+        assert error.value.method == "Network.loadingFinished"
+        assert error.value.code.startswith("event_decode_")
+    finally:
+        c.quit()
+
+
+def test_android_preflight_failure_prevents_both_receita_cases(monkeypatch, tmp_path):
+    from experiments.receita_direct_cdp_probe import android
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CONTROL_PYTHON", "/unused/control/python")
+    values = {"ro.build.version.sdk": "36", "ro.build.version.release": "16", "ro.kernel.qemu": "1"}
+
+    def adb(*args, **kwargs):
+        if args[:2] == ("shell", "getprop"):
+            return values[args[2]]
+        if args[:2] == ("shell", "dumpsys"):
+            return "versionName=133.0.6943.137"
+        if args[:3] == ("shell", "pm", "clear"):
+            return "Success"
+        return ""
+
+    monkeypatch.setattr(android, "adb", adb)
+    response = Mock()
+    response.__enter__ = Mock(return_value=response)
+    response.__exit__ = Mock(return_value=False)
+    response.read.return_value = b'{"User-Agent":"Android"}'
+    monkeypatch.setattr(android, "urlopen", lambda *a, **k: response)
+    process = Mock(returncode=1)
+    run = Mock(return_value=process)
+    monkeypatch.setattr(android.subprocess, "run", run)
+    assert android.main() == 1
+    assert run.call_count == 1
+    assert "experiments.receita_direct_cdp_probe.smoke" in run.call_args.args[0]
+
+
 def client_with_messages(monkeypatch, messages):
     response = Mock()
     response.__enter__ = Mock(return_value=response)

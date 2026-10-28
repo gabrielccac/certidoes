@@ -26,7 +26,8 @@ def main():
         adb("wait-for-device")
         adb("shell", "settings", "put", "global", "auto_time_zone", "0")
         adb("shell", "setprop", "persist.sys.timezone", "America/Sao_Paulo")
-        for engine, python in (("seleniumbase", os.environ["CONTROL_PYTHON"]), ("direct", sys.executable)):
+        for engine, python in (("preflight", sys.executable),
+                               ("seleniumbase", os.environ["CONTROL_PYTHON"]), ("direct", sys.executable)):
             assert adb("shell", "pm", "clear", "com.android.chrome") == "Success"
             adb("shell", "am", "set-debug-app", "--persistent", "com.android.chrome")
             adb("shell", 'echo "chrome --disable-fre --no-default-browser-check --no-first-run" > /data/local/tmp/chrome-command-line')
@@ -44,6 +45,14 @@ def main():
                         raise
                     time.sleep(0.5)
             print(json.dumps({"starting_engine": engine, "fresh_chrome_profile": True}), flush=True)
+            if engine == "preflight":
+                process = subprocess.run([python, "-m", "experiments.receita_direct_cdp_probe.smoke",
+                    "--page-host", "10.0.2.2", "--require-android", "--output", str(out / "preflight.json")],
+                    check=False, timeout=90)
+                if process.returncode != 0:
+                    return 1
+                adb("shell", "am", "force-stop", "com.android.chrome")
+                continue
             subprocess.run([python, "-m", "experiments.receita_direct_cdp_probe.case",
                 "--engine", engine, "--output", str(out / engine)], check=False, timeout=300)
             report_path = out / engine / "result.json"

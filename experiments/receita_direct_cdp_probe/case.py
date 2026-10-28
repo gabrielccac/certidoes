@@ -8,6 +8,7 @@ import resource
 import site
 import sys
 import time
+import traceback
 
 from certidoes.github_payload import decrypt
 from certidoes.sources import receita
@@ -54,6 +55,9 @@ def main():
     except Exception as error:
         report.update(status="error", error_type=type(error).__name__,
                       code=getattr(error, "code", None), failed_stage=getattr(error, "stage", None))
+        report["cdp_error_method"] = getattr(error, "method", None)
+        report["failure_frames"] = [{"file": Path(frame.filename).name, "line": frame.lineno,
+            "function": frame.name} for frame in traceback.extract_tb(error.__traceback__)]
     finally:
         report["elapsed_s"] = round(time.monotonic() - started, 2)
         report["python_peak_rss_kib"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
@@ -63,6 +67,7 @@ def main():
         report["playwright_imported"] = any(n.split(".")[0] == "playwright" for n in sys.modules)
         if client is not None:
             report["cdp_commands"] = dict(client.commands)
+            report["ignored_unsubscribed_events"] = dict(client.ignored_events)
         if args.engine == "direct" and report["seleniumbase_imported"]:
             report.update(status="error", code="unexpected_seleniumbase_import")
         text = json.dumps(report, indent=2)

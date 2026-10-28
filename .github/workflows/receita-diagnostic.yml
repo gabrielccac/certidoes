@@ -60,6 +60,7 @@ jobs:
           name: direct-cdp-${{ inputs.request_id }}
           path: |
             runs/direct-cdp-comparison/android.json
+            runs/direct-cdp-comparison/preflight.json
             runs/direct-cdp-comparison/summary.json
             runs/direct-cdp-comparison/*/result.json
           if-no-files-found: warn

@@ -13,6 +13,13 @@ import mycdp
 from mycdp.util import parse_json_event
 import websocket
 
+EVENT_METHODS = {
+    mycdp.network.RequestWillBeSent: "Network.requestWillBeSent",
+    mycdp.network.ResponseReceived: "Network.responseReceived",
+    mycdp.network.LoadingFinished: "Network.loadingFinished",
+    mycdp.fetch.RequestPaused: "Fetch.requestPaused",
+}
+
 
 class CommandError(RuntimeError):
     def __init__(self, method, code):
@@ -30,6 +37,7 @@ class DirectChrome:
         self.loop = asyncio.new_event_loop()
         self.handlers = defaultdict(list)
         self.commands = Counter()
+        self.ignored_events = Counter()
         self.sequence = 0
         self.page = self
 
@@ -37,7 +45,7 @@ class DirectChrome:
         return self.loop
 
     def add_handler(self, event_type, callback):
-        self.handlers[event_type].append(callback)
+        self.handlers[EVENT_METHODS[event_type]].append(callback)
 
     def call(self, method, params=None):
         self.sequence += 1
@@ -51,11 +59,15 @@ class DirectChrome:
                 if "error" in message:
                     raise CommandError(method, message["error"].get("code"))
                 return message.get("result", {})
+            callbacks = self.handlers.get(message.get("method"))
+            if not callbacks:
+                self.ignored_events[message.get("method", "unknown")] += 1
+                continue
             try:
                 event = parse_json_event(message)
-            except KeyError:
-                continue
-            for callback in self.handlers[type(event)]:
+            except (KeyError, TypeError, ValueError) as error:
+                raise CommandError(message["method"], "event_decode_" + type(error).__name__) from error
+            for callback in callbacks:
                 result = callback(event)
                 if inspect.isawaitable(result):
                     self.loop.create_task(result)
