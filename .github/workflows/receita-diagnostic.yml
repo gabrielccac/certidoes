@@ -140,6 +140,7 @@ jobs:
             '--profile', 'tmp/receita-probe-profile',
             '--incognito', '--transport', 'browser'
           )
+          if ($env:RUNNER_OS -eq 'Linux') { $cmd += '--managed-browser' }
           if ($mode -eq 'token') { $cmd += '--token' }
           if ($mode -eq 'verify') {
             $env:LIVE_DOCUMENT = $env:LIVE_DOCUMENT.Trim()
