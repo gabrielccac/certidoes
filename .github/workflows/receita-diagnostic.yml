@@ -1,85 +1,77 @@
-name: Receita browser diagnostic
-run-name: Receita ${{ inputs.mode }} ${{ inputs.request_id }}
-
-# Dispatch for headed Chrome on Windows and on Linux/Xvfb.
-# Depth is controlled by `mode`:
-# - fingerprint: no secrets needed, records the full browser fingerprint
-#   (UA, WebGL, canvas hash, locale, timezone).
-# - token: additionally mints a real hCaptcha token (needs secrets).
-# - verify: full hCaptcha validation (needs secrets).
-# - issue: runs the complete Receita flow and uploads the generated PDF.
+name: Receita browser comparison
+run-name: Receita browser comparison ${{ inputs.request_id }}
 
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "Probe depth"
-        type: choice
-        default: fingerprint
-        options: [fingerprint, token, verify, issue]
+        description: "Compatibility with the existing dispatch"
+        default: issue
       request_id:
-        description: "Opaque request identifier"
-        required: false
+        description: "Opaque validation identifier"
         default: ""
       payload:
-        description: "Encrypted Receita request payload"
-        required: false
+        description: "Encrypted Receita request"
         default: ""
 
 permissions:
   contents: read
 
 concurrency:
-  group: receita-diagnostic-${{ inputs.mode }}-${{ inputs.request_id || github.run_id }}
+  group: receita-browser-comparison-${{ inputs.request_id || github.run_id }}
   cancel-in-progress: true
 
 jobs:
-  probe:
+  compare:
+    name: ${{ matrix.os }} / ${{ matrix.browser }}
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-2025, ubuntu-24.04]
+        include:
+          - {os: windows-2025, browser: standard}
+          - {os: windows-2025, browser: cloak}
+          - {os: ubuntu-24.04, browser: standard}
+          - {os: ubuntu-24.04, browser: cloak}
+          - {os: ubuntu-24.04, browser: cloak-native}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 12
     env:
       PYTHONUTF8: "1"
       PYTHONUNBUFFERED: "1"
       PYTHONPATH: src
 
     steps:
-      - name: Check out source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out experimental branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
 
-      - name: Set up uv cache
-        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
-        with:
-          enable-cache: true
-          cache-dependency-glob: |
-            pyproject.toml
-            uv.lock
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
 
-      - name: Install project dependencies
+      - name: Install project and report parser
         shell: pwsh
-        run: uv pip install --system --no-progress .
+        run: uv pip install --system --no-progress . pypdf==6.21.3
 
-      - name: Ensure Xvfb on Linux
+      - name: Install pinned free CloakBrowser wrapper
+        if: startsWith(matrix.browser, 'cloak')
+        shell: pwsh
+        run: uv pip install --system --no-progress cloakbrowser==0.6.4
+
+      - name: Ensure Linux virtual display
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          if ! command -v Xvfb; then
+          if ! command -v xvfb-run; then
             sudo apt-get update
-            sudo apt-get install -y xvfb
+            sudo apt-get install -y xvfb xauth
           fi
-          echo "DISPLAY=" >> "$GITHUB_ENV"
-          echo "WAYLAND_DISPLAY=" >> "$GITHUB_ENV"
-          Xvfb -help 2>&1 | head -5 || true
 
-      - name: Locate Chrome
+      - name: Locate standard Chrome
+        if: matrix.browser == 'standard'
         shell: pwsh
         run: |
           if ($IsWindows) {
@@ -87,15 +79,14 @@ jobs:
               "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
               "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
             ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-            if (-not $chrome) { throw "Google Chrome was not found on the runner" }
           } else {
             $chrome = (Get-Command google-chrome, google-chrome-stable -ErrorAction SilentlyContinue | Select-Object -First 1).Source
-            if (-not $chrome) { throw "Google Chrome was not found on the runner" }
           }
+          if (-not $chrome) { throw "Google Chrome not found" }
           "CHROME_PATH=$chrome" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           & $chrome --version
 
-      - name: Run Receita probe
+      - name: Run one bounded browser comparison
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           LIVE_DOCUMENT: ${{ secrets.RECEITA_TEST_DOCUMENT }}
@@ -104,58 +95,18 @@ jobs:
           RECEITA_PAYLOAD_PRIVATE_KEY: ${{ secrets.RECEITA_PAYLOAD_PRIVATE_KEY }}
         shell: pwsh
         run: |
-          $mode = '${{ inputs.mode }}'
-          $hasPayload = -not [string]::IsNullOrWhiteSpace($env:RECEITA_PAYLOAD)
-          if (($mode -ne 'fingerprint') -and (-not $hasPayload) -and ([string]::IsNullOrWhiteSpace($env:LIVE_DOCUMENT) -or [string]::IsNullOrWhiteSpace($env:LIVE_BIRTH))) {
-            throw "Mode '$mode' needs an encrypted payload or test repository secrets"
+          if ($IsWindows) {
+            python experiments/receita_actions_probe/runner.py --browser '${{ matrix.browser }}'
+          } else {
+            xvfb-run --auto-servernum --server-args="-screen 0 1280x900x24" python experiments/receita_actions_probe/runner.py --browser '${{ matrix.browser }}'
           }
-          if ($mode -eq 'issue') {
-            $document = ([string]$env:LIVE_DOCUMENT).Trim()
-            $birth = ([string]$env:LIVE_BIRTH).Trim()
-            New-Item -ItemType Directory -Force -Path runs/receita-issue, tmp/receita-issue-profile | Out-Null
-            if ($env:RECEITA_PAYLOAD) {
-              python -m certidoes.github_payload decrypt --ciphertext $env:RECEITA_PAYLOAD --output tmp/receita-request.json
-              $request = Get-Content tmp/receita-request.json | ConvertFrom-Json
-              $document = $request.documento
-              $birth = $request.data_nascimento
-            }
-            Write-Output "::add-mask::$document"
-            Write-Output "::add-mask::$birth"
-            python -m certidoes.sources.receita `
-              --documento $document `
-              --data-nascimento $birth `
-              --output-dir runs/receita-issue `
-              --profile tmp/receita-issue-profile `
-              --captcha-retries 1
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            $pdfs = @(Get-ChildItem runs/receita-issue -Filter *.pdf -File)
-            if ($pdfs.Count -ne 1) { throw "Expected exactly one generated certificate" }
-            Move-Item -LiteralPath $pdfs[0].FullName -Destination runs/receita-issue/certificate.pdf
-            exit 0
-          }
-          New-Item -ItemType Directory -Force -Path runs/receita-probe, tmp/receita-probe-profile | Out-Null
-          $cmd = @(
-            'experiments/receita_compare.py',
-            '--output', 'runs/receita-probe/trace.json',
-            '--profile', 'tmp/receita-probe-profile',
-            '--incognito', '--transport', 'browser'
-          )
-          if ($mode -eq 'token') { $cmd += '--token' }
-          if ($mode -eq 'verify') {
-            $env:LIVE_DOCUMENT = $env:LIVE_DOCUMENT.Trim()
-            $env:LIVE_BIRTH = $env:LIVE_BIRTH.Trim()
-            $cmd += '--verify'
-          }
-          python @cmd
+          exit $LASTEXITCODE
 
-      - name: Upload redacted trace
+      - name: Upload report only
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: receita-${{ matrix.os }}-${{ inputs.mode }}-${{ inputs.request_id }}-${{ github.run_id }}
-          path: |
-            runs/receita-probe/trace.json
-            runs/receita-issue/*.pdf
-            runs/receita-issue/captcha/*.json
+          name: browser-probe-${{ matrix.os }}-${{ matrix.browser }}-${{ inputs.request_id }}
+          path: runs/actions-browser-probe/${{ matrix.browser }}/result.json
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 1
