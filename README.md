@@ -91,11 +91,15 @@ desafios continua pendente. As tentativas em contêiner e em Xvfb foram
 rejeitadas com `CaptchaFalhaValidacao`. O sucesso no desktop não valida esses
 ambientes nem o executor GitHub/Windows.
 
-O mesmo fluxo de formulário é usado no Windows. Os logs registram abertura
+O mesmo fluxo de formulário é usado no Windows. O workflow testa Windows
+2025 e Ubuntu 24.04, com Xvfb no Linux. Os logs registram abertura
 do navegador, submissão, rodadas visuais e respostas de validação/emissão,
 sem incluir documento, data de nascimento, token ou cookies. O workflow de
 diagnóstico limita a execução a uma tentativa completa; o resultado antigo
 de setembro não valida o solver visual atual.
+O diagnóstico registra geometria/visibilidade dos iframes e compara o token
+submetido com as respostas dos widgets, expondo apenas comprimentos e
+resultados da comparação. Zero rodadas não comprova ausência de desafio.
 
 ## Execução com Docker
 

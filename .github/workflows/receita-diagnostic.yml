@@ -1,7 +1,8 @@
 name: Receita browser diagnostic
 run-name: Receita ${{ inputs.mode }} ${{ inputs.request_id }}
 
-# Single dispatch for the Windows worker. Depth is controlled by `mode`:
+# Dispatch for headed Chrome on Windows and on Linux/Xvfb.
+# Depth is controlled by `mode`:
 # - fingerprint: no secrets needed, records the full browser fingerprint
 #   (UA, WebGL, canvas hash, locale, timezone).
 # - token: additionally mints a real hCaptcha token (needs secrets).
@@ -37,7 +38,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-2025]
+        os: [windows-2025, ubuntu-24.04]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     env:
@@ -65,6 +66,18 @@ jobs:
       - name: Install project dependencies
         shell: pwsh
         run: uv pip install --system --no-progress .
+
+      - name: Ensure Xvfb on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          if ! command -v Xvfb; then
+            sudo apt-get update
+            sudo apt-get install -y xvfb
+          fi
+          echo "DISPLAY=" >> "$GITHUB_ENV"
+          echo "WAYLAND_DISPLAY=" >> "$GITHUB_ENV"
+          Xvfb -help 2>&1 | head -5 || true
 
       - name: Locate Chrome
         shell: pwsh

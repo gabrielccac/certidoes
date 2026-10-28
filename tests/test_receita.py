@@ -175,11 +175,30 @@ def test_solver_sends_only_cropped_images_and_validates_indices(monkeypatch):
 
 def test_recognizes_wide_modal_and_ignores_hidden_frames():
     page = Mock()
+    compact = {"x": 373, "y": 122, "w": 520, "h": 570, "visible": True, "challenge": True}
+    lower = {"x": 50, "y": 350, "w": 620, "h": 750, "visible": True, "challenge": True}
     page.evaluate.return_value = [
-        {"x": 373, "y": 122, "w": 520, "h": 570},
-        {"x": 1, "y": -9999, "w": 300, "h": 150},
+        compact, lower,
+        {"x": 1, "y": -9999, "w": 300, "h": 150, "visible": False, "challenge": True},
+        {"x": 10, "y": 10, "w": 300, "h": 74, "visible": True, "challenge": False},
     ]
-    assert hcaptcha.vis_modal(page) == [{"x": 373, "y": 122, "w": 520, "h": 570}]
+    assert hcaptcha.vis_modal(page) == [compact, lower]
+
+
+def test_captcha_diagnostic_compares_tokens_without_logging_values(tmp_path, capsys):
+    import json
+
+    page = Mock()
+    token = "private-token-not-for-logs"
+    other = "other-private-response"
+    page.evaluate.side_effect = [[], {"ready": True, "responses": [token, other]}]
+    receita._trace_captcha(page, tmp_path, "verification_request", token)
+    contents = (tmp_path / "state-verification_request.json").read_text()
+    state = json.loads(contents)
+    assert state["submitted_token_length"] == len(token)
+    assert state["submitted_matches_widgets"] == [True, False]
+    logged = capsys.readouterr().err + contents
+    assert token not in logged and other not in logged
 
 
 def test_finds_centered_grid_in_wide_canvas():
@@ -245,6 +264,7 @@ def test_native_issuance_keeps_browser_alive_and_retries_processing(monkeypatch,
     monkeypatch.delenv("RECEITA_EXECUTOR", raising=False)
     monkeypatch.setattr(receita.sys, "platform", platform)
     monkeypatch.setattr(hcaptcha, "vis_modal", lambda page: [])
+    monkeypatch.setattr(receita, "_trace_captcha", lambda *args: None)
     page = Mock()
     alive = []
     events = {}
@@ -296,6 +316,7 @@ def test_windows_form_waits_for_visual_solver_before_verification(monkeypatch, t
 
     monkeypatch.delenv("RECEITA_EXECUTOR", raising=False)
     monkeypatch.setattr(receita.sys, "platform", "win32")
+    monkeypatch.setattr(receita, "_trace_captcha", lambda *args: None)
     page = Mock()
     events = {}
     state = {"waiting": False, "alive": False}

@@ -16,8 +16,13 @@ IFRAME_JS = """() => {
   const out = [];
   document.querySelectorAll('iframe').forEach((f) => {
     const r = f.getBoundingClientRect();
-    if ((f.src || '').includes('hcaptcha') && r.width > 50)
-      out.push({x: r.x, y: r.y, w: r.width, h: r.height});
+    if (!(f.src || '').includes('hcaptcha')) return;
+    const style = getComputedStyle(f);
+    const visible = r.width > 50 && r.height > 50 && r.right > 0 && r.bottom > 0
+      && r.left < innerWidth && r.top < innerHeight
+      && style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0;
+    out.push({x: r.x, y: r.y, w: r.width, h: r.height, visible,
+              challenge: f.src.includes('frame=challenge')});
   });
   return out;
 }"""
@@ -41,8 +46,26 @@ def page_state(page, success_selector=None):
 
 
 def vis_modal(page):
-    return [x for x in page.evaluate(IFRAME_JS) if 250 < x["w"] < 600
-            and 400 < x["h"] < 700 and -50 < x["y"] < 300]
+    return [x for x in page.evaluate(IFRAME_JS) if x["visible"] and x["challenge"]]
+
+
+def captcha_state(page, submitted_token=""):
+    try:
+        frames = page.evaluate(IFRAME_JS)
+        state = page.evaluate("""() => ({
+          ready: !!window.hcaptcha && typeof window.hcaptcha.getResponse === 'function',
+          responses: [...new Set([...document.querySelectorAll('[data-hcaptcha-widget-id]')]
+            .map(e => e.getAttribute('data-hcaptcha-widget-id')).filter(Boolean))].map(id => {
+              try { return window.hcaptcha?.getResponse(id) || ''; } catch { return ''; }
+            })
+        })""")
+        tokens = state["responses"]
+        return {"api_ready": state["ready"], "frames": frames,
+                "widget_token_lengths": [len(token) for token in tokens],
+                "submitted_token_length": len(submitted_token),
+                "submitted_matches_widgets": [bool(submitted_token) and token == submitted_token for token in tokens]}
+    except Exception as error:
+        return {"probe_error": type(error).__name__}
 
 
 def modal_clip(page, box):

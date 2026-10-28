@@ -131,6 +131,15 @@ def _log(event: str, **fields) -> None:
     print(json.dumps({"source": SOURCE, "event": event, **fields}), file=sys.stderr, flush=True)
 
 
+def _trace_captcha(page, captures: Path, phase: str, submitted_token: str = "") -> None:
+    from certidoes.captcha.hcaptcha import captcha_state
+
+    state = captcha_state(page, submitted_token)
+    _log("captcha_state", phase=phase, **state)
+    captures.mkdir(parents=True, exist_ok=True)
+    (captures / f"state-{phase}.json").write_text(json.dumps(state), encoding="utf-8")
+
+
 def _solve_visual(page, captures: Path, round_number: int) -> None:
     from certidoes.captcha.hcaptcha import solve_round
 
@@ -436,12 +445,25 @@ def _browser_generate(request: ReceitaRequest, documento: str, tipo: str, contri
     base = _payload(request, documento, tipo, contributor)
     try:
         with _browser(request) as page:
-            _log("browser_started", platform=sys.platform)
+            _log("browser_started", platform=sys.platform,
+                 display_mode="xvfb" if sys.platform == "linux" and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")) else "desktop")
             responses = []
+            captures = request.output_dir / "captcha"
+
+            def on_verification_request(network_request):
+                if network_request.url == VERIFICAR_URL and network_request.method == "POST":
+                    headers = network_request.headers
+                    token = headers.get("x-captcha-token", "")
+                    _log("verification_request", captcha_headers=[name for name in headers if "captcha" in name],
+                         submitted_token_length=len(token))
+                    _trace_captcha(page, captures, "verification_request", token)
+
+            page.on("request", on_verification_request)
             page.on("response", lambda response: responses.append(response)
                     if response.url == VERIFICAR_URL and response.request.method == "POST" else None)
             page.goto(PAGE_URLS[tipo], wait_until="domcontentloaded", timeout=request.token_timeout_ms)
             _log("page_ready")
+            _trace_captcha(page, captures, "page_ready")
             rounds = 0
             deadline = time.monotonic() + request.token_timeout_ms / 1000
             while vis_modal(page):
@@ -466,6 +488,7 @@ def _browser_generate(request: ReceitaRequest, documento: str, tipo: str, contri
             if not responses:
                 raise CertificateError(SOURCE, "challenge", "hcaptcha_falhou", "Receita form verification timed out", retryable=True)
             verification = responses[-1]
+            _trace_captcha(page, captures, "verification_response")
             _log("verification_received", http=verification.status, captcha_rounds=rounds)
             _require_ok(SimpleNamespace(status_code=verification.status, json=verification.json), "validation")
             status = verification.json().get("status")
