@@ -47,9 +47,11 @@ def ui_metadata(xml):
     return [{"class": node.get("class"),
              "resource_id": re.sub(r"\d", "*", node.get("resource-id", "")),
              "bounds": node.get("bounds"), "enabled": node.get("enabled"),
+             "focused": node.get("focused"),
+             "package": node.get("package"),
              "text_length": len(node.get("text", "")),
              "text": node.get("text") if node.get("text") in SAFE_TEXT else "<redacted>"}
-            for node in ET.fromstring(xml).iter("node")][:250]
+            for node in ET.fromstring(xml).iter("node")]
 
 
 def chrome_dialog_texts(xml):
@@ -61,10 +63,45 @@ def chrome_dialog_texts(xml):
     return []
 
 
-def field_state(xml, document, birth_digits):
-    nodes = inputs(xml)
-    return {"document_matches": len(nodes) == 2 and receita._digits(nodes[0].get("text")) == document,
-            "birth_matches": len(nodes) == 2 and receita._digits(nodes[1].get("text")) == birth_digits}
+def field_state(xml, document, birth_digits, field_ids):
+    nodes = {node.get("resource-id"): node for node in ET.fromstring(xml).iter("node")
+             if node.get("class") == "android.widget.EditText" and node.get("package") == CHROME}
+    result = {}
+    for name, expected in (("document", document), ("birth", birth_digits)):
+        node = nodes.get(field_ids[name])
+        result[name] = {"observed": node is not None,
+                        "matches": receita._digits(node.get("text")) == expected if node is not None else None,
+                        "focused": node.get("focused") == "true" if node is not None else None,
+                        "text_length": len(node.get("text", "")) if node is not None else None}
+    return result
+
+
+def keyboard_visible(xml):
+    for node in ET.fromstring(xml).iter("node"):
+        if ".inputmethod." in node.get("package", "") or ".inputmethod." in node.get("resource-id", ""):
+            try:
+                bounds(node)
+                return True
+            except AssertionError:
+                pass
+    return False
+
+
+def wait_ui(device, predicate, timeout=5):
+    deadline = time.monotonic() + timeout
+    while True:
+        xml = device.dump_hierarchy()
+        if predicate(xml):
+            return xml
+        if time.monotonic() >= deadline:
+            raise TimeoutError("Native UI invariant not reached")
+        time.sleep(0.2)
+
+
+def close_keyboard(device):
+    if keyboard_visible(device.dump_hierarchy()):
+        device.press("back")
+        wait_ui(device, lambda xml: not keyboard_visible(xml))
 
 
 def pdf_files():
@@ -121,7 +158,6 @@ def main():
         report["stage"] = "native_form"
         deadline = time.monotonic() + 90
         while time.monotonic() < deadline:
-            device(textMatches=r"(?i)\s*aceitar\s*").click_exists(timeout=0.2)
             xml = device.dump_hierarchy()
             dialog = chrome_dialog_texts(xml)
             if dialog:
@@ -140,28 +176,53 @@ def main():
                         break
                 assert dismissed, "Unrecognized Chrome startup dialog; inspect recorded labels"
                 continue
+            accept = device(textMatches=r"(?i)\s*aceitar\s*")
+            if accept.exists:
+                report["stage"] = "native_cookie_consent"
+                accept.click()
+                wait_ui(device, lambda value: not any(
+                    n.get("text", "").strip().casefold() == "aceitar"
+                    for n in ET.fromstring(value).iter("node")))
+                report["native_cookie_consent_dismissed"] = True
+                report["stage"] = "native_form"
+                continue
             if len(inputs(xml)) == 2:
                 break
             time.sleep(1)
         else:
             raise TimeoutError("Native form did not expose its two inputs")
 
-        for index, value in enumerate((document, day + month + year)):
-            report["stage"] = "native_document_input" if index == 0 else "native_birth_input"
-            node = inputs(device.dump_hierarchy())[index]
-            assert not receita._digits(node.get("text")), "Fresh field must be empty before native typing"
-            left, top, right, bottom = bounds(node)
-            device.click((left + right) // 2, (top + bottom) // 2)
+        nodes = inputs(xml)
+        field_ids = dict(zip(("document", "birth"), (node.get("resource-id") for node in nodes)))
+        assert all(field_ids.values()) and len(set(field_ids.values())) == 2, "Unique native input identities required"
+
+        def checkpoint(phase):
+            xml = device.dump_hierarchy()
+            entry = {"phase": phase, "fields": field_state(xml, document, day + month + year, field_ids),
+                     "keyboard_visible": keyboard_visible(xml)}
+            report.setdefault("checkpoints", []).append(entry)
+            print(json.dumps({"native_checkpoint": entry}), flush=True)
+            return entry
+
+        for name, value in (("document", document), ("birth", day + month + year)):
+            report["stage"] = "native_" + name + "_focus"
+            close_keyboard(device)
+            target = device(resourceId=field_ids[name], className="android.widget.EditText")
+            assert target.wait(timeout=5), "Bound native input is not visible"
+            assert not receita._digits(target.get_text()), "Fresh field must be empty before native typing"
+            target.click()
+            wait_ui(device, lambda xml: field_state(xml, document, day + month + year, field_ids)[name]["focused"] is True)
+            checkpoint(name + "_focused_before_typing")
+            report["stage"] = "native_" + name + "_input"
             adb("shell", "input", "text", value)
-            device.press(111)
+            wait_ui(device, lambda xml: field_state(xml, document, day + month + year, field_ids)[name]["matches"] is True)
+            checkpoint(name + "_typed_and_verified")
+            report["stage"] = "native_" + name + "_keyboard_close"
+            close_keyboard(device)
+            checkpoint(name + "_keyboard_closed")
         report["stage"] = "native_form_check"
-        deadline = time.monotonic() + 5
-        while True:
-            report["form_state"] = field_state(device.dump_hierarchy(), document, day + month + year)
-            if all(report["form_state"].values()) or time.monotonic() >= deadline:
-                break
-            time.sleep(0.2)
-        assert all(report["form_state"].values()), "Native input values do not match request"
+        report["form_state"] = checkpoint("before_emission")["fields"]
+        assert all(item["matches"] is True for item in report["form_state"].values()), "Native input values do not match request"
         button = device(textMatches=r"\s*Emitir Certidão\s*")
         assert button.wait(timeout=15), "Native emit button missing"
         report["button_enabled_before"] = button.info["enabled"]

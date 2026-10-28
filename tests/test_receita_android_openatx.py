@@ -2,7 +2,9 @@ import json
 
 import pytest
 
-from experiments.receita_environment_probe.android_openatx import bounds, chrome_dialog_texts, field_state, inputs, ui_metadata
+from experiments.receita_environment_probe.android_openatx import (
+    bounds, chrome_dialog_texts, close_keyboard, field_state, inputs, keyboard_visible, ui_metadata,
+)
 
 
 def test_native_inputs_exclude_chrome_address_bar_and_empty_bounds():
@@ -42,11 +44,48 @@ def test_chrome_startup_dialog_excludes_page_inputs_and_unrelated_nodes():
 
 def test_native_form_checks_full_date_instead_of_only_its_length():
     xml = '''<hierarchy>
-      <node class="android.widget.EditText" package="com.android.chrome" text="123.456.789-00" bounds="[0,20][100,40]"/>
-      <node class="android.widget.EditText" package="com.android.chrome" text="30/12/1990" bounds="[0,50][100,70]"/>
+      <node class="android.widget.EditText" package="com.android.chrome" resource-id="document-id" text="123.456.789-00" focused="false" bounds="[0,20][100,40]"/>
+      <node class="android.widget.EditText" package="com.android.chrome" resource-id="birth-id" text="30/12/1990" focused="true" bounds="[0,50][100,70]"/>
     </hierarchy>'''
-    assert field_state(xml, "12345678900", "31121990") == {"document_matches": True, "birth_matches": False}
-    assert field_state(xml, "12345678900", "30121990") == {"document_matches": True, "birth_matches": True}
+    ids = {"document": "document-id", "birth": "birth-id"}
+    result = field_state(xml, "12345678900", "31121990", ids)
+    assert result["document"]["matches"] is True
+    assert result["birth"]["matches"] is False
+    assert result["birth"]["focused"] is True
+    assert field_state(xml, "12345678900", "30121990", ids)["birth"]["matches"] is True
+
+
+def test_missing_field_is_unknown_and_does_not_invalidate_observed_field():
+    xml = '''<hierarchy><node class="android.widget.EditText" package="com.android.chrome"
+      resource-id="document-id" text="123.456.789-00" focused="true"/></hierarchy>'''
+    result = field_state(xml, "12345678900", "31121990", {"document": "document-id", "birth": "birth-id"})
+    assert result["document"]["matches"] is True
+    assert result["document"]["focused"] is True
+    assert result["birth"] == {"observed": False, "matches": None, "focused": None, "text_length": None}
+
+
+def test_field_identity_survives_reordering_in_native_hierarchy():
+    xml = '''<hierarchy>
+      <node class="android.widget.EditText" package="com.android.chrome" resource-id="birth-id" text="31/12/1990"/>
+      <node class="android.widget.EditText" package="com.android.chrome" resource-id="document-id" text="123.456.789-00"/>
+    </hierarchy>'''
+    result = field_state(xml, "12345678900", "31121990", {"document": "document-id", "birth": "birth-id"})
+    assert all(value["matches"] is True for value in result.values())
+
+
+def test_keyboard_close_uses_back_only_when_keyboard_is_visible():
+    from unittest.mock import Mock
+    shown = '<hierarchy><node package="com.google.android.inputmethod.latin" bounds="[0,100][100,200]"/></hierarchy>'
+    hidden = '<hierarchy><node package="com.android.chrome" bounds="[0,0][100,200]"/></hierarchy>'
+    assert keyboard_visible(shown) is True
+    device = Mock()
+    device.dump_hierarchy.side_effect = [shown, hidden]
+    close_keyboard(device)
+    device.press.assert_called_once_with("back")
+    device.reset_mock()
+    device.dump_hierarchy.side_effect = [hidden]
+    close_keyboard(device)
+    device.press.assert_not_called()
 
 
 @pytest.mark.parametrize("value", ["[-1,0][100,20]", "[10,20][5,30]", "[0,0][0,0]", "invalid"])
