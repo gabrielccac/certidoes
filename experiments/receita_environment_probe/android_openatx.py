@@ -51,6 +51,15 @@ def ui_metadata(xml):
             for node in ET.fromstring(xml).iter("node")][:250]
 
 
+def chrome_dialog_texts(xml):
+    for node in ET.fromstring(xml).iter("node"):
+        if node.get("resource-id") == CHROME + ":id/modal_dialog_view":
+            return [child.get("text")[:300] for child in node.iter("node")
+                    if child.get("text") and child.get("class") in
+                    ("android.widget.TextView", "android.widget.Button")][:12]
+    return []
+
+
 def pdf_files():
     return set(adb("shell", "find /sdcard/Download -maxdepth 1 -type f -iname '*.pdf' 2>/dev/null",
                    check=False).splitlines())
@@ -106,6 +115,23 @@ def main():
         while time.monotonic() < deadline:
             device(textMatches=r"(?i)\s*aceitar\s*").click_exists(timeout=0.2)
             xml = device.dump_hierarchy()
+            dialog = chrome_dialog_texts(xml)
+            if dialog:
+                # Chrome's own startup dialog is recorded before any personal data is entered.
+                report.setdefault("chrome_startup_dialogs", []).append(dialog)
+                dismissed = False
+                for button_id, allowed in (
+                    ("negative_button", {"not now", "no thanks", "agora não", "não, obrigado", "cancel", "cancelar"}),
+                    ("positive_button", {"got it", "ok", "entendi"}),
+                ):
+                    button = device(resourceId=CHROME + ":id/" + button_id)
+                    if button.exists and button.get_text().strip().casefold() in allowed:
+                        button.click()
+                        report["native_chrome_dialog_dismissed"] = True
+                        dismissed = True
+                        break
+                assert dismissed, "Unrecognized Chrome startup dialog; inspect recorded labels"
+                continue
             if len(inputs(xml)) == 2:
                 break
             time.sleep(1)
