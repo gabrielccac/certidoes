@@ -1,11 +1,11 @@
-name: Receita desktop self-hosted probe
-run-name: Receita self-hosted ${{ inputs.request_id }}
+name: Receita Windows hosted comparison
+run-name: Receita Windows ${{ inputs.request_id }}
 
 on:
   workflow_dispatch:
     inputs:
       request_id:
-        description: Opaque test identifier
+        description: Opaque validation identifier
         required: true
       payload:
         description: Encrypted Receita request
@@ -14,77 +14,66 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: receita-self-hosted-desktop
-  cancel-in-progress: false
-
 jobs:
-  issue:
-    runs-on: [receita-desktop-probe]
-    timeout-minutes: 10
+  compare:
+    name: windows-2025 / ${{ matrix.browser }}
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [standard, seleniumbase]
+    runs-on: windows-2025
+    timeout-minutes: 12
     env:
-      PYTHONPATH: src
-      RECEITA_EXECUTOR: local
+      PYTHONUTF8: "1"
       PYTHONUNBUFFERED: "1"
+      PYTHONPATH: src
+
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
 
-      - name: Check existing desktop
-        shell: bash
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+
+      - name: Install project and PDF parser
+        shell: pwsh
+        run: uv pip install --system --no-progress . pypdf==6.21.3
+
+      - name: Install SeleniumBase for its comparison job
+        if: matrix.browser == 'seleniumbase'
+        shell: pwsh
+        run: uv pip install --system --no-progress seleniumbase==4.56.4
+
+      - name: Locate Chrome
+        shell: pwsh
         run: |
-          test -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}"
-          command -v uv google-chrome pdftotext
-          google-chrome --version
+          $chrome = @(
+            "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+            "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
+          ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+          if (-not $chrome) { throw "Google Chrome not found" }
+          "CHROME_PATH=$chrome" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          & $chrome --version
 
-      - name: Install locked project dependencies
-        shell: bash
-        run: uv sync --frozen --python 3.11
-
-      - name: Issue and validate PDF in the existing desktop session
-        shell: bash
+      - name: Run full Receita flow with a headed browser
+        shell: pwsh
         env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           RECEITA_PAYLOAD: ${{ inputs.payload }}
           RECEITA_PAYLOAD_PRIVATE_KEY: ${{ secrets.RECEITA_PAYLOAD_PRIVATE_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
-          uv run --frozen python - <<'PY'
-          import json, os, re, subprocess, time
-          from pathlib import Path
-          from certidoes.github_payload import decrypt
-          from certidoes.sources.receita import ReceitaRequest, generate
-
-          out = Path("runs/self-hosted-probe")
-          out.mkdir(parents=True, exist_ok=True)
-          report = {"executor": "self-hosted desktop", "profile": "fresh"}
-          started = time.monotonic()
-          try:
-              payload = decrypt(os.environ["RECEITA_PAYLOAD"], os.environ["RECEITA_PAYLOAD_PRIVATE_KEY"])
-              for value in payload.values():
-                  print(f"::add-mask::{value}", flush=True)
-              result = generate(ReceitaRequest(**payload, output_dir=out,
-                  profile_dir=Path("tmp/self-hosted-profile"), captcha_retries=1))
-              pdf = result.pdf_path.read_bytes()
-              assert pdf.startswith(b"%PDF-") and len(pdf) > 1000, "Invalid PDF"
-              text = subprocess.check_output(["pdftotext", str(result.pdf_path), "-"], text=True)
-              assert payload["documento"] in re.sub(r"\D", "", text), "Document mismatch"
-              result.pdf_path.replace(out / "certificate.pdf")
-              report.update(status="success", bytes=len(pdf), document_matches=True, metadata=result.metadata)
-          except Exception as error:
-              report.update(status="error", error_type=type(error).__name__,
-                  stage=getattr(error, "stage", None), code=getattr(error, "code", None))
-          report["elapsed_s"] = round(time.monotonic() - started, 2)
-          (out / "result.json").write_text(json.dumps(report, indent=2) + "\n")
-          print(json.dumps(report), flush=True)
-          raise SystemExit(0 if report["status"] == "success" else 1)
-          PY
+          python experiments/receita_actions_probe/runner.py --browser '${{ matrix.browser }}'
+          exit $LASTEXITCODE
 
       - name: Upload report only
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: receita-self-hosted-${{ inputs.request_id }}
-          path: runs/self-hosted-probe/result.json
+          name: windows-probe-${{ matrix.browser }}-${{ inputs.request_id }}
+          path: runs/actions-browser-probe/${{ matrix.browser }}/result.json
           if-no-files-found: warn
           retention-days: 1
