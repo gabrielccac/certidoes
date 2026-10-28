@@ -1,57 +1,46 @@
-name: Receita Pure CDP and Android AVD
-run-name: Receita Android ${{ inputs.request_id }}
-
+name: Receita Android direct CDP comparison
+run-name: Receita direct CDP ${{ inputs.request_id }}
 on:
   workflow_dispatch:
     inputs:
       request_id:
-        description: Opaque diagnosis identifier
+        description: Opaque comparison identifier
         required: true
       payload:
-        description: Encrypted Receita request (empty uses the test identity secrets)
-        required: false
-        default: ''
-
+        description: Encrypted Receita request
+        required: true
 permissions:
   contents: read
-
 jobs:
-  android-avd:
-    strategy:
-      fail-fast: false
-      matrix:
-        runtime: [native]
-        trial: [1, 2, 3]
-    name: Android ${{ matrix.runtime }} / worker ${{ matrix.trial }}
+  android-direct-cdp:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      ANDROID_CONTAINER: ${{ matrix.runtime == 'docker' }}
       PYTHONPATH: src
       PYTHONUNBUFFERED: '1'
       RECEITA_PAYLOAD: ${{ inputs.payload }}
       RECEITA_PAYLOAD_PRIVATE_KEY: ${{ secrets.RECEITA_PAYLOAD_PRIVATE_KEY }}
-      LIVE_DOCUMENT: ${{ secrets.RECEITA_TEST_DOCUMENT }}
-      LIVE_BIRTH: ${{ secrets.RECEITA_TEST_BIRTH }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
-          python-version: '3.12'
+          python-version: '3.12.15'
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
-      - name: Install Pure CDP dependencies
-        run: uv pip install --system --no-progress seleniumbase==4.56.4 requests curl_cffi cryptography pypdf==6.21.3
-      - name: Build Android container runtime
-        if: matrix.runtime == 'docker'
-        run: docker build -f experiments/receita_environment_probe/Dockerfile.android-runtime -t receita-android-runtime:probe .
-      - name: Enable KVM on this disposable worker
+      - name: Install two isolated Python environments
+        run: |
+          uv venv --python 3.12.15 "$RUNNER_TEMP/sb-control"
+          uv venv --python 3.12.15 "$RUNNER_TEMP/cdp-direct"
+          uv pip install --python "$RUNNER_TEMP/sb-control/bin/python" --no-progress seleniumbase==4.56.4 requests curl_cffi cryptography pypdf==6.21.3
+          uv pip install --python "$RUNNER_TEMP/cdp-direct/bin/python" --no-progress websocket-client==1.9.2 mycdp==1.4.0 requests curl_cffi cryptography pypdf==6.21.3
+          echo "CONTROL_PYTHON=$RUNNER_TEMP/sb-control/bin/python" >> "$GITHUB_ENV"
+          echo "DIRECT_PYTHON=$RUNNER_TEMP/cdp-direct/bin/python" >> "$GITHUB_ENV"
+      - name: Enable KVM
         run: sudo chmod a+rw /dev/kvm
-      - name: Run actual Android with its native Chrome browser
+      - name: Compare controllers on the same Android worker
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
-          pre-emulator-launch-script: bash experiments/receita_environment_probe/android-container.sh
           api-level: 36
           target: google_apis
           arch: x86_64
@@ -63,16 +52,15 @@ jobs:
           emulator-boot-timeout: 600
           disable-animations: true
           enable-hw-keyboard: true
-          script: python -m experiments.receita_environment_probe.android
-      - name: Upload Android facts and redacted results only
+          script: $DIRECT_PYTHON -m experiments.receita_direct_cdp_probe.android
+      - name: Upload redacted reports only
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: android-${{ matrix.runtime }}-${{ matrix.trial }}-${{ inputs.request_id }}
+          name: direct-cdp-${{ inputs.request_id }}
           path: |
-            runs/pure-cdp-android/android.json
-            runs/pure-cdp-android/*/result.json
-            runs/pure-cdp-android/*/failure.png
+            runs/direct-cdp-comparison/android.json
+            runs/direct-cdp-comparison/summary.json
+            runs/direct-cdp-comparison/*/result.json
           if-no-files-found: warn
           retention-days: 1
-
