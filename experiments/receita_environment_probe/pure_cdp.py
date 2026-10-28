@@ -113,8 +113,30 @@ def run(request: receita.ReceitaRequest, *, android_port: int | None, single_sdk
             language:navigator.language,webdriver:navigator.webdriver}))()""")
         if android_port:
             assert "Android" in report["fingerprint"]["ua"], "Browser is not running Android"
-            assert report["fingerprint"]["mobile"], "Android mobile browser not active"
+            # userAgentData is occasionally absent right after load; the UA token is equivalent.
+            assert report["fingerprint"].get("mobile", "Mobile" in report["fingerprint"]["ua"]), \
+                "Android mobile browser not active"
         sb.wait_for_element_visible('input[name="niContribuinte"]', timeout=30)
+        # Keep the page's own Emissao response in memory: CDP Network events can go silent
+        # and a second Emissao call after the portal already issued may answer 5xx.
+        sb.evaluate("""(() => {
+            if (window.__certidoesEmissao !== undefined) return;
+            window.__certidoesEmissao = null;
+            const keep = (url, status, text) => {
+                if (/\\/api\\/Emissao$/.test(String(url).split('?')[0])) window.__certidoesEmissao = {status, text};
+            };
+            const open = XMLHttpRequest.prototype.open;
+            XMLHttpRequest.prototype.open = function (method, url) {
+                this.addEventListener('load', () => keep(this.responseURL || url, this.status, this.responseText));
+                return open.apply(this, arguments);
+            };
+            const fetch0 = window.fetch;
+            window.fetch = async function (...args) {
+                const response = await fetch0.apply(this, args);
+                response.clone().text().then(t => keep(response.url, response.status, t)).catch(() => {});
+                return response;
+            };
+        })()""")
         sb.click_if_visible('button:contains("Aceitar")')
         if android_port:
             sb.clear('input[name="niContribuinte"]')
@@ -218,7 +240,21 @@ def run(request: receita.ReceitaRequest, *, android_port: int | None, single_sdk
             receita._require_ok(SimpleNamespace(status_code=status, json=lambda: body), "validation")
         elif not issued_page:
             raise receita.CertificateError("receita", "challenge", "verification_timeout", "Official form verification timed out")
-        for delay in (*receita.EMISSAO_RETRY_DELAYS, None):
+        pdf = None
+        for _ in range(25):
+            captured = sb.evaluate("window.__certidoesEmissao")
+            if captured:
+                try:
+                    pdf = receita._emissao_pdf(SimpleNamespace(
+                        status_code=captured["status"], json=lambda: json.loads(captured["text"])))
+                    report["pdf_source"] = "page_response"
+                except receita.CertificateError as error:
+                    report["page_response_error"] = error.code
+                break
+            if not issued_page:
+                break
+            pump(0.2)
+        for delay in (() if pdf else (*receita.EMISSAO_RETRY_DELAYS, None)):
             emission = loop.run_until_complete(sb.page.evaluate("""(async () => {
                 const response=await fetch(""" + json.dumps(receita.EMISSAO_URL) + """,{
                   method:'POST',headers:{'Content-Type':'application/json'},
@@ -227,6 +263,7 @@ def run(request: receita.ReceitaRequest, *, android_port: int | None, single_sdk
                 return {status:response.status,data:await response.json()};})()""", await_promise=True))
             try:
                 pdf = receita._emissao_pdf(SimpleNamespace(status_code=emission["status"], json=lambda: emission["data"]))
+                report["pdf_source"] = "refetch"
                 break
             except receita.CertificateError as error:
                 if error.code != "emissao_em_processamento" or delay is None:
