@@ -1,11 +1,11 @@
-name: Receita Chrome version comparison
-run-name: Receita Chrome versions ${{ inputs.request_id }}
+name: Receita environment diagnosis
+run-name: Receita environments ${{ inputs.request_id }}
 
 on:
   workflow_dispatch:
     inputs:
       request_id:
-        description: Opaque validation identifier
+        description: Opaque diagnosis identifier
         required: true
       payload:
         description: Encrypted Receita request
@@ -15,59 +15,79 @@ permissions:
   contents: read
 
 jobs:
-  compare:
-    runs-on: windows-2025
-    timeout-minutes: 15
+  diagnose:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: windows-2025, platform: win64, modes: 'headed headless front no-trace'}
+          - {os: ubuntu-24.04, platform: linux64, modes: 'headless'}
+          - {os: macos-15-intel, platform: mac-x64, modes: 'headed headless'}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     env:
       PYTHONUTF8: "1"
       PYTHONUNBUFFERED: "1"
       PYTHONPATH: src
+
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
-          python-version: "3.12"
+          python-version: '3.12'
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
-      - name: Install project and pinned probe dependencies
+      - name: Install fixed probe dependencies
         shell: pwsh
         run: uv pip install --system --no-progress . pypdf==6.21.3 playwright==1.64.1
 
-      - name: Compare Chrome 155 and 156 sequentially on the same worker
+      - name: Download the same Chrome build for this platform
+        shell: pwsh
+        run: |
+          $platform = '${{ matrix.platform }}'
+          $archive = Join-Path $env:RUNNER_TEMP 'receita-chrome.zip'
+          $destination = Join-Path $env:RUNNER_TEMP 'receita-chrome'
+          Invoke-WebRequest "https://storage.googleapis.com/chrome-for-testing-public/155.0.8059.84/$platform/chrome-$platform.zip" -OutFile $archive
+          if ($IsWindows) {
+            Expand-Archive -LiteralPath $archive -DestinationPath $destination
+            $chrome = Join-Path $destination 'chrome-win64/chrome.exe'
+          } elseif ($IsMacOS) {
+            /usr/bin/ditto -x -k $archive $destination
+            $chrome = Join-Path $destination 'chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'
+            chmod +x $chrome
+          } else {
+            unzip -q $archive -d $destination
+            $chrome = Join-Path $destination 'chrome-linux64/chrome'
+            chmod +x $chrome
+            chmod +x (Join-Path $destination 'chrome-linux64/chrome_crashpad_handler')
+          }
+          "CHROME_PATH=$chrome" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          & $chrome --version
+
+      - name: Diagnose the official form in each mode
         shell: pwsh
         env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           RECEITA_PAYLOAD: ${{ inputs.payload }}
           RECEITA_PAYLOAD_PRIVATE_KEY: ${{ secrets.RECEITA_PAYLOAD_PRIVATE_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
-          New-Item -ItemType Directory -Force runs/chrome-version-probe | Out-Null
           $failed = $false
-          foreach ($version in @('155.0.8059.84', '156.0.8078.73')) {
-            $archive = Join-Path $env:RUNNER_TEMP "chrome-$version.zip"
-            $destination = Join-Path $env:RUNNER_TEMP "chrome-$version"
-            Invoke-WebRequest "https://storage.googleapis.com/chrome-for-testing-public/$version/win64/chrome-win64.zip" -OutFile $archive
-            Expand-Archive -LiteralPath $archive -DestinationPath $destination
-            $env:CHROME_PATH = Join-Path $destination 'chrome-win64/chrome.exe'
-            & $env:CHROME_PATH --version
-            if (Test-Path tmp/actions-browser-probe/standard) {
-              Remove-Item -LiteralPath tmp/actions-browser-probe/standard -Recurse -Force
-            }
-            python experiments/receita_actions_probe/runner.py --browser standard
-            $exitCode = $LASTEXITCODE
-            if (Test-Path runs/actions-browser-probe/standard/result.json) {
-              Copy-Item runs/actions-browser-probe/standard/result.json "runs/chrome-version-probe/$version.json"
-            }
-            if ($exitCode -ne 0) { $failed = $true }
+          foreach ($mode in '${{ matrix.modes }}'.Split(' ')) {
+            python -m experiments.receita_environment_probe.probe --mode $mode --output "runs/environment-probe/$mode"
+            if ($LASTEXITCODE -ne 0) { $failed = $true }
           }
           if ($failed) { exit 1 }
           exit 0
 
-      - name: Upload comparison reports
+      - name: Upload redacted reports and masked screenshots
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: chrome-versions-${{ inputs.request_id }}
-          path: runs/chrome-version-probe/*.json
+          name: environment-${{ matrix.os }}-${{ inputs.request_id }}
+          path: |
+            runs/environment-probe/*/result.json
+            runs/environment-probe/*/failure.png
           if-no-files-found: warn
           retention-days: 1
