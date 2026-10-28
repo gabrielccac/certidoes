@@ -17,6 +17,16 @@ def adb(*arguments, check=True):
     return result.stdout.strip()
 
 
+def wait_for_root():
+    for attempt in range(3):
+        adb("root", check=False)
+        adb("wait-for-device")
+        if adb("shell", "id", "-u") == "0":
+            return
+        time.sleep(1)
+    raise RuntimeError("Android adbd did not become ready as root")
+
+
 def main():
     root = Path("runs/pure-cdp-android")
     root.mkdir(parents=True, exist_ok=True)
@@ -40,8 +50,9 @@ def main():
     print(json.dumps(facts), flush=True)
     failed = False
     try:
-        adb("root")
-        adb("wait-for-device")
+        wait_for_root()
+        facts["adbd_root_verified"] = True
+        (root / "android.json").write_text(json.dumps(facts, indent=2) + "\n")
         adb("shell", "settings", "put", "global", "auto_time_zone", "0")
         adb("shell", "setprop", "persist.sys.timezone", "America/Sao_Paulo")
         for single in (False, True):

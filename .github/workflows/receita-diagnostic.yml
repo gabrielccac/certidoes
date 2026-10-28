@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runtime: [docker]
+        runtime: [native]
     name: Android touch / ${{ matrix.runtime }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
