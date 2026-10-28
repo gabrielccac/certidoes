@@ -67,6 +67,10 @@ def run(request: receita.ReceitaRequest, *, android_port: int | None, single_sdk
 
         def on_response(event):
             url = event.response.url
+            if "/servico/certidoes/api/" in url:
+                # Path and status only: shows which Receita step answered, never the body.
+                path = url.split("/servico/certidoes/api/", 1)[1].split("?", 1)[0]
+                report.setdefault("api_calls", []).append([re.sub(r"\d{4,}", "<n>", path)[:60], int(event.response.status)])
             if url.startswith(SDK_URL):
                 report["sdk_loads"].append({"http": int(event.response.status),
                     "explicit": "render=explicit" in url})
@@ -134,34 +138,67 @@ def run(request: receita.ReceitaRequest, *, android_port: int | None, single_sdk
             focus:document.hasFocus(),visibility:document.visibilityState}))()""")
         assert report["form_state"]["document_matches"], "Form document mismatch"
         assert kind != "CPF" or report["form_state"]["birth_matches"], "Form birth mismatch"
-        if android_port:
-            from mycdp import input_
+        def dismiss_cookie_banner():
+            # The LGPD banner can reappear after load and sit over the submit button.
+            dismissed = sb.evaluate("""(() => {
+                const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Aceitar'&&b.offsetParent);
+                if (!b) return false; b.click(); return true;})()""")
+            if dismissed:
+                report["cookie_banner_dismissals"] = report.get("cookie_banner_dismissals", 0) + 1
+                pump(0.6)
+
+        def press(label: str, counter: str) -> dict:
+            """Tap (Android) or click (desktop) a visible button, refusing to tap through an overlay."""
             sb.evaluate("""(() => {
                 document.activeElement?.blur();
-                const button=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Emitir Certidão');
-                window.__certidoesSubmit={clicks:0,submits:0};
-                button.addEventListener('click',()=>window.__certidoesSubmit.clicks++,true);
-                document.querySelector('form')?.addEventListener('submit',()=>window.__certidoesSubmit.submits++,true);
-                button.scrollIntoView({block:'center',behavior:'instant'});
+                const b=[...document.querySelectorAll('button')].filter(b=>b.textContent.trim()===""" + json.dumps(label) + """&&b.offsetParent).pop();
+                window.__certidoesSubmit=window.__certidoesSubmit||{clicks:0,submits:0,new_issue_clicks:0};
+                if (!b.__certidoesCounted) {
+                    b.__certidoesCounted=true;
+                    b.addEventListener('click',()=>window.__certidoesSubmit[""" + json.dumps(counter) + """]++,true);
+                }
+                const f=document.querySelector('form');
+                if (f&&!f.__certidoesCounted) {f.__certidoesCounted=true;f.addEventListener('submit',()=>window.__certidoesSubmit.submits++,true);}
+                b.scrollIntoView({block:'center',behavior:'instant'});
             })()""")
             pump(0.4)
-            for attempt in range(2):
+            for attempt in range(3):
+                dismiss_cookie_banner()
                 point = sb.evaluate("""(() => {
-                    const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Emitir Certidão');
-                    const r=b.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};
+                    const b=[...document.querySelectorAll('button')].filter(b=>b.textContent.trim()===""" + json.dumps(label) + """&&b.offsetParent).pop();
+                    const r=b.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;
+                    return {x,y,covered:!b.contains(document.elementFromPoint(x,y))};
                 })()""")
-                send(input_.synthesize_tap_gesture(**point, gesture_source_type=input_.GestureSourceType.TOUCH))
+                if point.pop("covered"):
+                    report.setdefault("covered_taps", []).append(label)
+                    pump(0.6)
+                    continue
+                if android_port:
+                    from mycdp import input_
+                    send(input_.synthesize_tap_gesture(**point, gesture_source_type=input_.GestureSourceType.TOUCH))
+                else:
+                    sb.click(f'button:contains("{label}")', timeout=30)
                 pump(0.4)
-                report["submit_events"] = sb.evaluate("window.__certidoesSubmit")
-                if report["submit_events"]["clicks"]:
-                    break
-            else:
-                raise receita.CertificateError("receita", "browser", "submit_tap_missed", "Submit button did not receive the Android tap")
-        else:
-            sb.click('button:contains("Emitir Certidão")', timeout=30)
+                events = sb.evaluate("window.__certidoesSubmit")
+                if events[counter]:
+                    return events
+            raise receita.CertificateError("receita", "browser", "submit_tap_missed", f"Button {label!r} did not receive the tap")
+
+        def existing_certificate_dialog() -> bool:
+            return sb.evaluate("""(() => /Certidão Válida Encontrada/i.test(document.body?.innerText||'')
+                && [...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='Emitir Nova Certidão'&&b.offsetParent))()""")
+
+        dismiss_cookie_banner()
+        report["submit_events"] = press("Emitir Certidão", "clicks")
         deadline = time.monotonic() + request.token_timeout_ms / 1000
         while receita.VERIFICAR_URL not in responses and time.monotonic() < deadline:
             pump()
+            if existing_certificate_dialog():
+                # The captcha already passed; Receita asks whether to reuse a still-valid certificate.
+                report["existing_certificate_dialog"] = True
+                report["submit_events"] = press("Emitir Nova Certidão", "new_issue_clicks")
+                deadline = time.monotonic() + request.token_timeout_ms / 1000
+                continue
             state = sb.evaluate("""(() => ({
                 rejected:/requested URL was rejected/i.test(document.body?.innerText||''),
                 portal_106:/106\\s*-\\s*\\d{2}\\/\\d{2}\\/\\d{4}/.test(document.body?.innerText||''),
@@ -226,7 +263,7 @@ def main() -> int:
     try:
         payload = (decrypt(os.environ["RECEITA_PAYLOAD"], os.environ["RECEITA_PAYLOAD_PRIVATE_KEY"])
             if os.environ.get("RECEITA_PAYLOAD") else
-            {"documento": os.environ["LIVE_DOCUMENT"], "data_nascimento": os.environ["LIVE_BIRTH"]})
+            {"documento": os.environ["LIVE_DOCUMENT"].strip(), "data_nascimento": os.environ["LIVE_BIRTH"].strip()})
         document, birth = payload["documento"], payload["data_nascimento"]
         if os.environ.get("GITHUB_ACTIONS"):
             print(f"::add-mask::{document}\n::add-mask::{birth}", flush=True)

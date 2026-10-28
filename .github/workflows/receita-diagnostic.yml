@@ -8,8 +8,9 @@ on:
         description: Opaque diagnosis identifier
         required: true
       payload:
-        description: Encrypted Receita request
-        required: true
+        description: Encrypted Receita request (empty uses the test identity secrets)
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -19,8 +20,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runtime: [docker]
-    name: Android touch / ${{ matrix.runtime }}
+        runtime: [native]
+        trial: [1, 2, 3]
+    name: Android ${{ matrix.runtime }} / worker ${{ matrix.trial }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
@@ -29,6 +31,8 @@ jobs:
       PYTHONUNBUFFERED: '1'
       RECEITA_PAYLOAD: ${{ inputs.payload }}
       RECEITA_PAYLOAD_PRIVATE_KEY: ${{ secrets.RECEITA_PAYLOAD_PRIVATE_KEY }}
+      LIVE_DOCUMENT: ${{ secrets.RECEITA_TEST_DOCUMENT }}
+      LIVE_BIRTH: ${{ secrets.RECEITA_TEST_BIRTH }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -64,7 +68,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: android-touch-${{ matrix.runtime }}-${{ inputs.request_id }}
+          name: android-${{ matrix.runtime }}-${{ matrix.trial }}-${{ inputs.request_id }}
           path: |
             runs/pure-cdp-android/android.json
             runs/pure-cdp-android/*/result.json
