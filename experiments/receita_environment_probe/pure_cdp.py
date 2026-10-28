@@ -191,8 +191,14 @@ def run(request: receita.ReceitaRequest, *, android_port: int | None, single_sdk
         dismiss_cookie_banner()
         report["submit_events"] = press("Emitir Certidão", "clicks")
         deadline = time.monotonic() + request.token_timeout_ms / 1000
+        issued_page = False
         while receita.VERIFICAR_URL not in responses and time.monotonic() < deadline:
             pump()
+            # CDP network events sometimes go silent on Android Chrome; the result page
+            # only renders after verificar and Emissao succeeded, so it is proof on its own.
+            if sb.evaluate("/certid[aã]o foi emitida com sucesso/i.test(document.body?.innerText||'')"):
+                issued_page = report["issued_page_without_network"] = True
+                break
             if existing_certificate_dialog():
                 # The captcha already passed; Receita asks whether to reuse a still-valid certificate.
                 report["existing_certificate_dialog"] = True
@@ -207,10 +213,11 @@ def run(request: receita.ReceitaRequest, *, android_port: int | None, single_sdk
             if state["rejected"] or state["portal_106"] or state["visual"]:
                 code = "portal_rejected" if state["rejected"] else "portal_hcaptcha_106" if state["portal_106"] else "visual_challenge_required"
                 raise receita.CertificateError("receita", "challenge", code, "Official form did not complete verification")
-        if receita.VERIFICAR_URL not in responses:
+        if receita.VERIFICAR_URL in responses:
+            status, body = responses[receita.VERIFICAR_URL]
+            receita._require_ok(SimpleNamespace(status_code=status, json=lambda: body), "validation")
+        elif not issued_page:
             raise receita.CertificateError("receita", "challenge", "verification_timeout", "Official form verification timed out")
-        status, body = responses[receita.VERIFICAR_URL]
-        receita._require_ok(SimpleNamespace(status_code=status, json=lambda: body), "validation")
         for delay in (*receita.EMISSAO_RETRY_DELAYS, None):
             emission = loop.run_until_complete(sb.page.evaluate("""(async () => {
                 const response=await fetch(""" + json.dumps(receita.EMISSAO_URL) + """,{
