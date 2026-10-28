@@ -27,7 +27,7 @@ try:
  report['boot_s']=round(time.monotonic()-start,2)
  for key in ('window_animation_scale','transition_animation_scale','animator_duration_scale'):
   subprocess.run(['adb','-s','emulator-5554','shell','settings','put','global',key,'0.0'],check=True,capture_output=True,timeout=20)
- report['stage']='direct_cdp_preflight_and_receita'
+ report['stage']='direct_cdp_probe'
  print(json.dumps(report),flush=True)
  result=subprocess.run([sys.executable,*(sys.argv[1:] or ['-m','experiments.receita_direct_cdp_probe.android','--direct-only'])],timeout=420)
  report.update(status='success' if result.returncode==0 else 'error',probe_exit_code=result.returncode,stage='complete')
