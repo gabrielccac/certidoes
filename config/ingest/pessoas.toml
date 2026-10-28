@@ -52,26 +52,66 @@ primeiro_nome = "first_word"
 [sources.params]
 tipo_certidao = "CIVEL"
 
-# TRF1 (disabled): needs a per-row certidão type decision the base has no
-# column for yet. To enable, add a column (e.g. TIPO TRF1 with the numeric
-# id) and uncomment, mapping it to tipo_certidao_id. ESTADO already maps
-# to orgao_siglas (single value wrapped into a 1-tuple by `wraps`).
-#
-# [[sources]]
-# key = "trf1"
-# label = "TRF1"
-# source = "trf1"
-# [sources.columns]
-# documento = "fld7IVxBo84EnZWfr"       # CPF
-# orgao_siglas = "fldkHVPMKoBOaHRWA"    # ESTADO DO ÓRGÃO DE EMISSÃO
-# [sources.transforms]
-# documento = "digits"
-# orgao_siglas = "strip"
-# [sources.wraps]
-# orgao_siglas = "tuple"
-# [sources.params]
-# is_pessoa_fisica = true
-# tipo_certidao_id = 1
+# TRF1: fixed to Cível (tipo_certidao_id = 1) in DF, same as local.toml.
+# For a per-row decision, add a column (e.g. TIPO TRF1 with the numeric id)
+# mapped to tipo_certidao_id, and map ESTADO (fldkHVPMKoBOaHRWA) to
+# orgao_siglas with transform "strip" and wraps "tuple".
+[[sources]]
+key = "trf1-civel-df"
+label = "TRF1 Cível DF"
+source = "trf1"
+
+[sources.columns]
+documento = "fld7IVxBo84EnZWfr"  # CPF
+
+[sources.transforms]
+documento = "digits"
+
+[sources.params]
+is_pessoa_fisica = true
+tipo_certidao_id = 1
+orgao_siglas = ["DF"]
+
+[[sources]]
+key = "fazenda-pf"
+label = "Fazenda DF Pessoa Física"
+source = "fazenda"
+
+[sources.columns]
+documento = "fld7IVxBo84EnZWfr"  # CPF
+
+[sources.transforms]
+documento = "digits"
+
+[sources.params]
+tipo_pessoa = "Pessoa Física"
+finalidade = "Junto ao GDF"
+tipo_certidao = "Certidão de Débitos"
+
+[[sources]]
+key = "trt10-cpf"
+label = "TRT10 CPF"
+source = "trt10"
+
+[sources.columns]
+documento = "fld7IVxBo84EnZWfr"  # CPF
+
+[sources.transforms]
+documento = "digits"
+
+[sources.params]
+criterio = "CPF"
+
+[[sources]]
+key = "tst"
+label = "TST"
+source = "tst"
+
+[sources.columns]
+documento = "fld7IVxBo84EnZWfr"  # CPF
+
+[sources.transforms]
+documento = "digits"
 
 [outputs]
 status = "fldFFwz6j72y70Pgx"   # STATUS DOCUMENTAÇÃO

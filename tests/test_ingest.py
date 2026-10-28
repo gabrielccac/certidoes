@@ -48,8 +48,12 @@ def test_load_pessoas_mapping(monkeypatch):
     loaded = mapping.load_mapping(PESSOAS_TOML)
     assert loaded.table == "tbllHy5KvlJrFmXsh"
     assert loaded.provider == "airtable"
-    assert [source.key for source in loaded.sources] == ["receita-pf", "tjdft-civel"]
-    assert [source.source for source in loaded.sources] == ["receita", "tjdft"]
+    assert [source.key for source in loaded.sources] == [
+        "receita-pf", "tjdft-civel", "trf1-civel-df", "fazenda-pf", "trt10-cpf", "tst",
+    ]
+    assert [source.source for source in loaded.sources] == [
+        "receita", "tjdft", "trf1", "fazenda", "trt10", "tst",
+    ]
     assert loaded.sources[0].transforms == {"documento": "digits"}
     assert loaded.status.claim_from == ("PENDENTE", "TENTAR NOVAMENTE")
 
