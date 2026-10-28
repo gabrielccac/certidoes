@@ -67,7 +67,7 @@ try:
         data = response.json()
         print(json.dumps({'stage':'form_verify','http':response.status,'status':data.get('status'),'validation':data.get('statusValidacao')}),flush=True)
         raise SystemExit(0 if response.status == 200 else 1)
-    token = r._token(page, 30000)
+    token = r._token(page, request.token_timeout_ms)
     print(json.dumps({'stage':'token','length':len(token),'seconds':round(time.monotonic()-started,1)}), flush=True)
     payload = r._payload(request, document, kind, contributor)
     def post(url, payload, token=None):

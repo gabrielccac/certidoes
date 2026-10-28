@@ -83,6 +83,7 @@ jobs:
 
       - name: Run Receita probe
         env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           LIVE_DOCUMENT: ${{ secrets.RECEITA_TEST_DOCUMENT }}
           LIVE_BIRTH: ${{ secrets.RECEITA_TEST_BIRTH }}
           RECEITA_PAYLOAD: ${{ inputs.payload }}
@@ -104,12 +105,18 @@ jobs:
               $document = $request.documento
               $birth = $request.data_nascimento
             }
+            Write-Output "::add-mask::$document"
+            Write-Output "::add-mask::$birth"
             python -m certidoes.sources.receita `
               --documento $document `
               --data-nascimento $birth `
               --output-dir runs/receita-issue `
               --profile tmp/receita-issue-profile
-            exit $LASTEXITCODE
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $pdfs = @(Get-ChildItem runs/receita-issue -Filter *.pdf -File)
+            if ($pdfs.Count -ne 1) { throw "Expected exactly one generated certificate" }
+            Move-Item -LiteralPath $pdfs[0].FullName -Destination runs/receita-issue/certificate.pdf
+            exit 0
           }
           New-Item -ItemType Directory -Force -Path runs/receita-probe, tmp/receita-probe-profile | Out-Null
           $cmd = @(

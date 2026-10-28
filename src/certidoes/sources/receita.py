@@ -6,13 +6,17 @@ import io
 import json
 import os
 import re
+import shutil
+import sys
 import tempfile
 import time
 import uuid
 import zipfile
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request as UrlRequest, build_opener, urlopen
 
@@ -54,7 +58,7 @@ class ReceitaRequest:
     debug_port: int = 9336
     profile_dir: Path = Path("experiments/profile")
     chrome_path: str | None = None
-    token_timeout_ms: int = 30_000
+    token_timeout_ms: int = 180_000
     request_timeout_s: int = 30
     captcha_retries: int = 3
 
@@ -114,6 +118,7 @@ def _normalize(request: ReceitaRequest) -> tuple[str, str, str]:
 
 def _chrome_path(configured: str | None) -> str:
     candidates = [configured, os.environ.get("CHROME_PATH"),
+                  shutil.which("google-chrome"), shutil.which("chromium"),
                   r"C:\Program Files\Google\Chrome\Application\chrome.exe",
                   r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"]
     for candidate in candidates:
@@ -122,70 +127,119 @@ def _chrome_path(configured: str | None) -> str:
     raise CertificateError(SOURCE, "browser", "chrome_nao_encontrado", "Google Chrome executable was not found")
 
 
-def _token(page, timeout_ms: int) -> str:
+def _solve_visual(page, captures: Path, round_number: int) -> None:
+    from certidoes.captcha.hcaptcha import solve_round
+
+    if not os.environ.get("OPENROUTER_API_KEY"):
+        raise CertificateError(SOURCE, "challenge", "captcha_config_missing",
+                               "OPENROUTER_API_KEY is required for the visual challenge")
+    if round_number >= 6:
+        raise CertificateError(SOURCE, "challenge", "hcaptcha_falhou", "hCaptcha round limit reached", retryable=True)
+    captures.mkdir(parents=True, exist_ok=True)
+    _, info = solve_round(page, str(captures), round_number,
+                         os.environ.get("RECEITA_CAPTCHA_MODEL", "meta/muse-spark-1.3"),
+                         reasoning_effort="medium")
+    (captures / f"r{round_number}-result.json").write_text(json.dumps(info), encoding="utf-8")
+    if info.get("solve_error") or info.get("why") == "interrupted-clicks":
+        raise CertificateError(SOURCE, "challenge", "hcaptcha_falhou", "hCaptcha image solving failed", retryable=True)
+
+
+def _token(page, timeout_ms: int, *, output_dir: Path | None = None) -> str:
     try:
-        page.wait_for_selector(WIDGET_SELECTOR, state="attached", timeout=timeout_ms)
-        widgets = page.evaluate("""() => [...document.querySelectorAll('[data-hcaptcha-widget-id]')]
-            .map(element => element.getAttribute('data-hcaptcha-widget-id')).filter(Boolean)""")
-        if not widgets:
-            raise ValueError("hCaptcha widget id missing")
         deadline = time.monotonic() + timeout_ms / 1000
-        while time.monotonic() < deadline:
-            ready = page.evaluate("""() => !!window.hcaptcha && typeof window.hcaptcha.execute === 'function'""")
-            if ready:
-                break
-            page.wait_for_timeout(250)
-        else:
-            raise ValueError("hCaptcha is not ready")
-        remaining = max(1, int((deadline - time.monotonic()) * 1000))
-        script = """
-            async ({widgetId, timeoutMs}) => {
-              if (!window.hcaptcha || typeof window.hcaptcha.execute !== 'function')
-                throw new Error('hCaptcha is not ready');
-              const value = await Promise.race([
-                window.hcaptcha.execute(widgetId, {async: true}),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('hCaptcha timeout')), timeoutMs))
-              ]);
-              return value && typeof value === 'object' ? value.response : value;
-            }
-        """
-        last_error = None
-        for widget in widgets:
-            try:
-                result = page.evaluate(script, {"widgetId": widget, "timeoutMs": remaining})
-                if isinstance(result, str) and result:
-                    return result
-                last_error = ValueError("hCaptcha returned an empty token")
-            except Exception as exc:
-                last_error = exc
-        raise last_error or ValueError("hCaptcha token generation failed")
+        from certidoes.captcha.hcaptcha import vis_modal
+
+        def execute():
+            remaining = max(1, int((deadline - time.monotonic()) * 1000))
+            page.wait_for_selector(WIDGET_SELECTOR, state="attached", timeout=remaining)
+            widgets = page.evaluate("""() => [...document.querySelectorAll('[data-hcaptcha-widget-id]')]
+                .map(element => element.getAttribute('data-hcaptcha-widget-id')).filter(Boolean)""")
+            if not widgets:
+                raise ValueError("hCaptcha widget id missing")
+            while time.monotonic() < deadline:
+                if page.evaluate("""() => !!window.hcaptcha && typeof window.hcaptcha.execute === 'function'"""):
+                    break
+                page.wait_for_timeout(250)
+            else:
+                raise ValueError("hCaptcha is not ready")
+            # The second widget belongs to the page-opening gate, not Receita's API.
+            page.evaluate("""widgetId => {
+              const state = window.__certidoesCaptcha = {token: '', error: false};
+              Promise.resolve(window.hcaptcha.execute(widgetId, {async: true})).then(
+                value => { state.token = value && typeof value === 'object' ? value.response : value;
+                           state.error = !state.token; },
+                () => { state.error = true; }
+              );
+            }""", widgets[0])
+
+        with tempfile.TemporaryDirectory(prefix="receita-captcha-") as temporary:
+            captures = output_dir or Path(temporary)
+            captures.mkdir(parents=True, exist_ok=True)
+            rounds = 0
+            active = False
+            while time.monotonic() < deadline:
+                if vis_modal(page):
+                    _solve_visual(page, captures, rounds)
+                    rounds += 1
+                    page.wait_for_timeout(500)
+                    continue
+                state = page.evaluate("() => window.__certidoesCaptcha") if active else None
+                if state is None:
+                    # Solving the opening gate can reload the page and discard execute's promise.
+                    execute()
+                    active = True
+                elif state.get("token"):
+                    if isinstance(state["token"], str):
+                        return state["token"]
+                    raise ValueError("hCaptcha returned a non-string token")
+                elif state.get("error"):
+                    raise ValueError("hCaptcha token generation failed")
+                page.wait_for_timeout(250)
+        raise ValueError("hCaptcha token generation timed out or failed")
     except CertificateError:
         raise
     except Exception as exc:
         raise CertificateError(SOURCE, "challenge", "hcaptcha_falhou", "hCaptcha token generation failed", retryable=True) from exc
 
 
+@contextmanager
+def _browser(request: ReceitaRequest):
+    with ExitStack() as stack:
+        chrome_path = _chrome_path(request.chrome_path)
+        if sys.platform == "linux" and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+            from certidoes.captcha.browser import ManagedBrowser
+            from playwright.sync_api import sync_playwright
+
+            manager = ManagedBrowser(str(request.profile_dir.resolve()),
+                                     cdp_port=request.debug_port, chrome_bin=chrome_path)
+            stack.callback(manager.stop)
+            cdp = manager.start()
+            playwright = stack.enter_context(sync_playwright())
+            context = playwright.chromium.connect_over_cdp(cdp).contexts[0]
+            yield context.pages[0] if context.pages else context.new_page()
+        else:
+            chrome = CdpChrome(chrome_path, debug_port=request.debug_port,
+                               profile_dir=request.profile_dir, incognito=sys.platform != "linux")
+            stack.callback(chrome.close)
+            yield chrome.start()
+
+
 def _fresh_token(request: ReceitaRequest, tipo: str) -> tuple[str, str]:
     last_error: CertificateError | None = None
     for attempt in range(request.captcha_retries):
-        chrome = CdpChrome(
-            _chrome_path(request.chrome_path),
-            debug_port=request.debug_port,
-            profile_dir=request.profile_dir,
-            incognito=True,
-        )
         try:
-            page = chrome.start()
-            page.goto(PAGE_URLS[tipo], wait_until="domcontentloaded", timeout=request.token_timeout_ms)
-            token = _token(page, request.token_timeout_ms)
-            user_agent = page.evaluate("navigator.userAgent")
-            return token, user_agent
+            with _browser(request) as page:
+                page.goto(PAGE_URLS[tipo], wait_until="domcontentloaded", timeout=request.token_timeout_ms)
+                token = _token(page, request.token_timeout_ms,
+                               output_dir=request.output_dir / "captcha" / str(attempt))
+                user_agent = page.evaluate("navigator.userAgent")
+                return token, user_agent
         except CertificateError as exc:
+            if not exc.retryable:
+                raise
             last_error = exc
         except Exception:
             last_error = CertificateError(SOURCE, "browser", "pagina_falhou", "Receita page interaction failed", retryable=True)
-        finally:
-            chrome.close()
         if attempt + 1 < request.captcha_retries:
             time.sleep(0.5)
     raise last_error or CertificateError(SOURCE, "challenge", "hcaptcha_falhou", "hCaptcha token generation failed", retryable=True)
@@ -368,10 +422,72 @@ def _github_generate(request: ReceitaRequest, documento: str, tipo: str) -> Cert
                              {"status": "Emitida", "bytes": len(pdf), "executor": "github", "run_id": run["id"]})
 
 
+def _browser_generate(request: ReceitaRequest, documento: str, tipo: str, contributor: str) -> CertificateResult:
+    from certidoes.captcha.hcaptcha import vis_modal
+
+    base = _payload(request, documento, tipo, contributor)
+    try:
+        with _browser(request) as page:
+            responses = []
+            page.on("response", lambda response: responses.append(response)
+                    if response.url == VERIFICAR_URL and response.request.method == "POST" else None)
+            page.goto(PAGE_URLS[tipo], wait_until="domcontentloaded", timeout=request.token_timeout_ms)
+            rounds = 0
+            deadline = time.monotonic() + request.token_timeout_ms / 1000
+            while vis_modal(page):
+                if time.monotonic() >= deadline:
+                    raise CertificateError(SOURCE, "challenge", "hcaptcha_falhou", "Opening challenge timed out", retryable=True)
+                _solve_visual(page, request.output_dir / "captcha", rounds)
+                rounds += 1
+                page.wait_for_timeout(500)
+            page.locator('input[name="niContribuinte"]').fill(documento)
+            if tipo == "CPF":
+                year, month, day = base["dataNascimento"].split("-")
+                page.locator('input[name="dataNascimento"]').fill(f"{day}/{month}/{year}")
+            page.get_by_role("button", name="Emitir Certidão", exact=True).click(timeout=request.token_timeout_ms)
+            while not responses and time.monotonic() < deadline:
+                if vis_modal(page):
+                    _solve_visual(page, request.output_dir / "captcha", rounds)
+                    rounds += 1
+                    page.wait_for_timeout(500)
+                else:
+                    page.wait_for_timeout(250)
+            if not responses:
+                raise CertificateError(SOURCE, "challenge", "hcaptcha_falhou", "Receita form verification timed out", retryable=True)
+            verification = responses[-1]
+            _require_ok(SimpleNamespace(status_code=verification.status, json=verification.json), "validation")
+            status = verification.json().get("status")
+            for delay in (*EMISSAO_RETRY_DELAYS, None):
+                result = page.evaluate("""async ({url,payload,timeoutMs}) => {
+                    const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
+                        body:JSON.stringify(payload),signal:AbortSignal.timeout(timeoutMs)});
+                    return {status:response.status,data:await response.json()};
+                }""", {"url": EMISSAO_URL, "payload": {key: base[key] for key in ("ni", "tipoContribuinte", "dataNascimento")},
+                       "timeoutMs": request.request_timeout_s * 1000})
+                try:
+                    pdf = _emissao_pdf(SimpleNamespace(status_code=result["status"], json=lambda: result["data"]))
+                    break
+                except CertificateError as exc:
+                    if exc.code != "emissao_em_processamento" or delay is None:
+                        raise
+                    page.wait_for_timeout(delay * 1000)
+    except CertificateError:
+        raise
+    except Exception as exc:
+        raise CertificateError(SOURCE, "browser", "pagina_falhou", "Receita browser issuance failed", retryable=True) from exc
+    filename = f"Certidão Receita Federal - {documento}.pdf"
+    destination = request.output_dir / filename
+    _save(pdf, destination)
+    return CertificateResult(SOURCE, tipo, filename, destination,
+                             {"status": status or "Emissao", "bytes": len(pdf), "executor": "browser", "captcha_rounds": rounds})
+
+
 def generate(request: ReceitaRequest) -> CertificateResult:
     documento, tipo, contributor = _normalize(request)
     if os.environ.get("RECEITA_EXECUTOR") == "github":
         return _github_generate(request, documento, tipo)
+    if sys.platform == "linux":
+        return _browser_generate(request, documento, tipo, contributor)
     token, user_agent = _fresh_token(request, tipo)
 
     session = requests.Session(impersonate="chrome")

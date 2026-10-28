@@ -259,7 +259,7 @@ def main() -> int:
             hcaptchaReady:!!window.hcaptcha && typeof window.hcaptcha.execute === 'function',
             hcaptchaFrames:[...document.querySelectorAll('iframe')].filter(x=>x.src.includes('hcaptcha.com')).length})""")
         if args.verify or args.token:
-            token = r._token(page, 30000)
+            token = r._token(page, 180000)
             trace["result"]["tokenLength"] = len(token)
         if args.verify:
             payload = r._payload(request, document, kind, contributor)
