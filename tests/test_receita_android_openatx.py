@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from experiments.receita_environment_probe.android_openatx import bounds, chrome_dialog_texts, inputs, ui_metadata
+from experiments.receita_environment_probe.android_openatx import bounds, chrome_dialog_texts, field_state, inputs, ui_metadata
 
 
 def test_native_inputs_exclude_chrome_address_bar_and_empty_bounds():
@@ -38,6 +38,15 @@ def test_chrome_startup_dialog_excludes_page_inputs_and_unrelated_nodes():
       </node>
     </hierarchy>'''
     assert chrome_dialog_texts(xml) == ["Chrome setup", "Not now"]
+
+
+def test_native_form_checks_full_date_instead_of_only_its_length():
+    xml = '''<hierarchy>
+      <node class="android.widget.EditText" package="com.android.chrome" text="123.456.789-00" bounds="[0,20][100,40]"/>
+      <node class="android.widget.EditText" package="com.android.chrome" text="30/12/1990" bounds="[0,50][100,70]"/>
+    </hierarchy>'''
+    assert field_state(xml, "12345678900", "31121990") == {"document_matches": True, "birth_matches": False}
+    assert field_state(xml, "12345678900", "30121990") == {"document_matches": True, "birth_matches": True}
 
 
 @pytest.mark.parametrize("value", ["[-1,0][100,20]", "[10,20][5,30]", "[0,0][0,0]", "invalid"])

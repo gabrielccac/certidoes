@@ -61,6 +61,12 @@ def chrome_dialog_texts(xml):
     return []
 
 
+def field_state(xml, document, birth_digits):
+    nodes = inputs(xml)
+    return {"document_matches": len(nodes) == 2 and receita._digits(nodes[0].get("text")) == document,
+            "birth_matches": len(nodes) == 2 and receita._digits(nodes[1].get("text")) == birth_digits}
+
+
 def pdf_files():
     return set(adb("shell", "find /sdcard/Download -maxdepth 1 -type f -iname '*.pdf' 2>/dev/null",
                    check=False).splitlines())
@@ -72,6 +78,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     report = {"engine": "OpenATX/uiautomator2", "uiautomator2": version("uiautomator2"),
               "device": "android", "cdp_used": False, "sdk_policy": "official unmodified",
+              "typing_backend": "adb shell input text",
               "status": "running", "stage": "input"}
     started = time.monotonic()
     device = None
@@ -139,18 +146,21 @@ def main():
         else:
             raise TimeoutError("Native form did not expose its two inputs")
 
-        for index, value in enumerate((document, native_birth)):
+        for index, value in enumerate((document, day + month + year)):
             report["stage"] = "native_document_input" if index == 0 else "native_birth_input"
             node = inputs(device.dump_hierarchy())[index]
+            assert not receita._digits(node.get("text")), "Fresh field must be empty before native typing"
             left, top, right, bottom = bounds(node)
             device.click((left + right) // 2, (top + bottom) // 2)
-            device.send_keys(value, clear=True)
+            adb("shell", "input", "text", value)
+            device.press(111)
         report["stage"] = "native_form_check"
-        device.press(111)  # Escape dismisses native input popups without the optional IME broadcast.
-        nodes = inputs(device.dump_hierarchy())
-        report["form_state"] = {
-            "document_matches": len(nodes) == 2 and receita._digits(nodes[0].get("text")) == document,
-            "birth_matches": len(nodes) == 2 and receita._digits(nodes[1].get("text")) == day + month + year}
+        deadline = time.monotonic() + 5
+        while True:
+            report["form_state"] = field_state(device.dump_hierarchy(), document, day + month + year)
+            if all(report["form_state"].values()) or time.monotonic() >= deadline:
+                break
+            time.sleep(0.2)
         assert all(report["form_state"].values()), "Native input values do not match request"
         button = device(textMatches=r"\s*Emitir Certidão\s*")
         assert button.wait(timeout=15), "Native emit button missing"
