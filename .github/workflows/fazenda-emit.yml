@@ -1,0 +1,72 @@
+name: Fazenda certificate
+run-name: Fazenda ${{ inputs.request_id }}
+
+# Emits one Fazenda DF certificate on a hosted Linux runner, for services that
+# cannot run the browser themselves (e.g. Cloud Run, where the Cloudflare widget
+# rejects the browser). Dispatched by certidoes.github_executor with an
+# encrypted payload; the PDF is returned as a short-lived artifact.
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: "Opaque request identifier"
+        required: true
+      payload:
+        description: "Encrypted Fazenda request payload"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fazenda-${{ inputs.request_id }}
+  cancel-in-progress: true
+
+jobs:
+  emit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      PYTHONUTF8: "1"
+      PYTHONPATH: src
+      CERTIDOES_DOCKER: "1"  # adds --no-sandbox, same as the container image
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install playwright opencv-python-headless numpy cryptography
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
+
+      - name: Decrypt request
+        env:
+          FAZENDA_PAYLOAD: ${{ inputs.payload }}
+          RECEITA_PAYLOAD_PRIVATE_KEY: ${{ secrets.RECEITA_PAYLOAD_PRIVATE_KEY }}
+        run: |
+          mkdir -p tmp
+          python -m certidoes.github_payload decrypt --ciphertext "$FAZENDA_PAYLOAD" \
+            --allow documento,tipo_pessoa,finalidade,tipo_certidao --output tmp/request.json
+          echo "::add-mask::$(jq -r .documento tmp/request.json)"
+
+      - name: Emit certificate (headed Chrome under Xvfb)
+        run: |
+          mkdir -p runs/fazenda-issue tmp/profile
+          xvfb-run -a --server-args="-screen 0 1920x1080x24" python -m certidoes.sources.fazenda \
+            --documento "$(jq -r .documento tmp/request.json)" \
+            --tipo-pessoa "$(jq -r .tipo_pessoa tmp/request.json)" \
+            --finalidade "$(jq -r .finalidade tmp/request.json)" \
+            --tipo-certidao "$(jq -r .tipo_certidao tmp/request.json)" \
+            --output-dir runs/fazenda-issue --profile tmp/profile > tmp/result.json
+          echo "status: $(jq -r '.status + " " + (.code // "")' tmp/result.json)"
+
+      - name: Upload certificate
+        uses: actions/upload-artifact@v4
+        with:
+          name: fazenda-${{ inputs.request_id }}
+          path: runs/fazenda-issue/*.pdf
+          if-no-files-found: error
+          retention-days: 1
