@@ -1,5 +1,5 @@
-name: Receita environment diagnosis
-run-name: Receita environments ${{ inputs.request_id }}
+name: Receita SDK and timezone diagnosis
+run-name: Receita SDK ${{ inputs.request_id }}
 
 on:
   workflow_dispatch:
@@ -21,9 +21,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {os: windows-2025, platform: win64, modes: 'headed headless front no-trace'}
-          - {os: ubuntu-24.04, platform: linux64, modes: 'headless'}
-          - {os: macos-15-intel, platform: mac-x64, modes: 'headed headless'}
+          - {os: windows-2025, platform: win64}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     env:
@@ -74,8 +72,17 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           $failed = $false
-          foreach ($mode in '${{ matrix.modes }}'.Split(' ')) {
-            python -m experiments.receita_environment_probe.probe --mode $mode --output "runs/environment-probe/$mode"
+          $cases = @(
+            @{name='utc-double'; timezone='UTC'; single=$false},
+            @{name='utc-single'; timezone='UTC'; single=$true},
+            @{name='br-single'; timezone='E. South America Standard Time'; single=$true},
+            @{name='br-double'; timezone='E. South America Standard Time'; single=$false}
+          )
+          foreach ($case in $cases) {
+            Set-TimeZone -Id $case.timezone
+            $arguments = @('-m', 'experiments.receita_environment_probe.probe', '--mode', 'headed', '--output', "runs/environment-probe/$($case.name)")
+            if ($case.single) { $arguments += '--single-sdk' }
+            & python @arguments
             if ($LASTEXITCODE -ne 0) { $failed = $true }
           }
           if ($failed) { exit 1 }

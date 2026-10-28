@@ -13,6 +13,7 @@ import re
 import subprocess
 import time
 from unittest.mock import patch
+from urllib.parse import urlsplit
 
 import requests
 
@@ -41,7 +42,9 @@ def form_state(page, document: str) -> dict:
         birth_length:birth?.value.length || 0,
         document_valid:ni?.validity.valid, birth_valid:birth?.validity.valid,
         viewport:[innerWidth,innerHeight], screen:[screen.width,screen.height],
-        ready:document.readyState};
+        ready:document.readyState,
+        portal_rejected_url:/requested URL was rejected/i.test(document.body?.innerText || ''),
+        portal_hcaptcha_error:/106\s*-\s*\d{2}\/\d{2}\/\d{4}/.test(document.body?.innerText || '')};
     }""", document)
 
 
@@ -54,16 +57,37 @@ def payload_metadata(payload, document: str, birth: str) -> dict:
             "contributor": payload.get("tipoContribuinte") in ("PF", "PJ", 0, 1)}
 
 
+def challenge_metadata(body) -> dict:
+    if not isinstance(body, dict):
+        return {"object": False}
+    result = {"keys": sorted(body)}
+    for key in ("pass", "success"):
+        if isinstance(body.get(key), bool):
+            result[key] = body[key]
+    token = body.get("generated_pass_UUID")
+    if isinstance(token, str):
+        result["generated_token_length"] = len(token)
+    kind = body.get("request_type")
+    if kind in ("image_label_binary", "image_label_area_select", "image_drag_drop"):
+        result["request_type"] = kind
+    result["challenge_present"] = isinstance(body.get("tasklist"), list) and bool(body["tasklist"])
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=("headed", "headless", "front", "no-trace"), required=True)
+    parser.add_argument("--single-sdk", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    report = {"mode": args.mode, "os": platform.system(), "python": platform.python_version(),
+    report = {"mode": args.mode, "single_sdk": args.single_sdk,
+              "os": platform.system(), "python": platform.python_version(),
               "playwright": version("playwright"), "commit": os.environ.get("GITHUB_SHA"),
-              "started_utc": datetime.now(timezone.utc).isoformat(), "profile": "fresh",
-              "network": network_metadata(), "events": [], "states": [], "status": "running"}
+              "started_utc": datetime.now(timezone.utc).isoformat(),
+              "profile": "existing" if (args.output / "profile").exists() else "fresh",
+              "network": network_metadata(), "events": [], "states": [],
+              "challenge_responses": [], "captcha_sdk_loads": [], "status": "running"}
     started = time.monotonic()
     original_browser, original_log, original_trace = receita._browser, receita._log, receita._trace_captcha
     active_page = None
@@ -90,6 +114,21 @@ def main() -> int:
                 report["payload_probe_error"] = type(error).__name__
 
     def verification_response(response):
+        host = urlsplit(response.url).hostname or ""
+        if host == "hcaptcha.com" or host.endswith(".hcaptcha.com"):
+            if host == "js.hcaptcha.com" and urlsplit(response.url).path == "/1/api.js":
+                report["captcha_sdk_loads"].append({"http": response.status,
+                    "render_explicit": "render=explicit" in urlsplit(response.url).query})
+            route = urlsplit(response.url).path.strip("/").split("/")[0]
+            if route in ("checksiteconfig", "getcaptcha", "checkcaptcha"):
+                try:
+                    report["challenge_responses"].append({
+                        "at_ms": round((time.monotonic() - started) * 1000),
+                        "route": route, "http": response.status,
+                        **challenge_metadata(response.json())})
+                except Exception as error:
+                    report["challenge_responses"].append({"route": route,
+                        "http": response.status, "probe_error": type(error).__name__})
         if response.url == receita.VERIFICAR_URL and response.request.method == "POST":
             try:
                 body = response.json()
@@ -105,16 +144,19 @@ def main() -> int:
     def browser(request):
         nonlocal active_page
         with ExitStack() as stack:
-            if args.mode == "headless":
-                executable = receita._chrome_path(request.chrome_path)
-                original_popen = subprocess.Popen
+            executable = receita._chrome_path(request.chrome_path)
+            original_popen = subprocess.Popen
+            stderr = stack.enter_context((args.output / "chrome-stderr.log").open("w"))
 
-                def launch(command, **kwargs):
-                    if command[0] == executable:
+            def launch(command, **kwargs):
+                if command[0] == executable:
+                    kwargs["stderr"] = stderr
+                    if args.mode == "headless":
                         command = [command[0], "--headless=new", *command[1:]]
-                    return original_popen(command, **kwargs)
+                return original_popen(command, **kwargs)
 
-                stack.enter_context(patch("subprocess.Popen", side_effect=launch))
+            stack.enter_context(patch("subprocess.Popen", side_effect=launch))
+            if args.mode == "headless":
                 chrome = receita.CdpChrome(executable, debug_port=request.debug_port,
                                           profile_dir=request.profile_dir)
                 stack.callback(chrome.close)
@@ -122,6 +164,8 @@ def main() -> int:
             else:
                 page = stack.enter_context(original_browser(request))
             active_page = page
+            if args.single_sdk:
+                page.route("https://js.hcaptcha.com/1/api.js", lambda route: route.abort())
             report["browser_version"] = page.context.browser.version
             page.on("request", verification_request)
             page.on("response", verification_response)
@@ -129,7 +173,7 @@ def main() -> int:
                 report["fingerprint"] = page.evaluate("""() => {
                   const gl=document.createElement('canvas').getContext('webgl');
                   const ext=gl&&gl.getExtension('WEBGL_debug_renderer_info');
-                  return {language:navigator.language,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,
+                  return {user_agent:navigator.userAgent,language:navigator.language,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,
                     platform:navigator.platform,webdriver:navigator.webdriver,
                     webgl:!!gl,renderer:ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):null};
                 }""")
@@ -167,6 +211,14 @@ def main() -> int:
                       stage=getattr(error, "stage", None), code=getattr(error, "code", None))
     finally:
         receita._browser, receita._log, receita._trace_captcha = original_browser, original_log, original_trace
+        stderr_path = args.output / "chrome-stderr.log"
+        if stderr_path.exists():
+            text = stderr_path.read_text(errors="replace")
+            report["chrome_startup"] = {
+                "sandbox_error": bool(re.search(r"no usable sandbox|failed to move to new namespace|setuid sandbox|user namespace.*not permitted", text, re.I)),
+                "display_error": bool(re.search(r"missing X server|cannot open display|could not connect.*Wayland", text, re.I)),
+                "missing_libraries": sorted(set(re.findall(r"(lib[\w.+-]+\.so(?:\.\d+)*): cannot open", text))),
+            }
         report["elapsed_s"] = round(time.monotonic() - started, 2)
         (args.output / "result.json").write_text(json.dumps(report, indent=2) + "\n")
         print(json.dumps({key: value for key, value in report.items() if key not in ("events", "states")}), flush=True)

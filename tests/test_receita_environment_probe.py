@@ -22,6 +22,17 @@ def test_network_metadata_excludes_ip(monkeypatch):
     assert "203.0.113.9" not in json.dumps(result)
 
 
+def test_challenge_metadata_excludes_tokens_and_tasks():
+    result = probe.challenge_metadata({"pass": True, "generated_pass_UUID": "private-token",
+        "tasklist": [{"datapoint_uri": "private-url"}], "request_type": "image_label_binary",
+        "c": {"req": "private-request"}})
+    assert result["pass"] and result["challenge_present"]
+    assert result["generated_token_length"] == len("private-token")
+    assert result["request_type"] == "image_label_binary"
+    assert "private" not in json.dumps(result)
+    assert probe.challenge_metadata(None) == {"object": False}
+
+
 def test_headless_startup_failure_closes_browser_and_restores_hooks(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "argv", ["probe", "--mode", "headless", "--output", str(tmp_path)])
     monkeypatch.delenv("RECEITA_PAYLOAD", raising=False)
