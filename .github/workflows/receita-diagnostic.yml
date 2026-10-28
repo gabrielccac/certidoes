@@ -1,5 +1,5 @@
-name: Receita SDK and timezone diagnosis
-run-name: Receita SDK ${{ inputs.request_id }}
+name: Receita Pure CDP and Android AVD
+run-name: Receita Android ${{ inputs.request_id }}
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 jobs:
-  diagnose:
+  windows-desktop:
     name: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -39,7 +39,7 @@ jobs:
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
       - name: Install fixed probe dependencies
         shell: pwsh
-        run: uv pip install --system --no-progress . pypdf==6.21.3 playwright==1.64.1
+        run: uv pip install --system --no-progress seleniumbase==4.56.4 requests curl_cffi cryptography pypdf==6.21.3
 
       - name: Download the same Chrome build for this platform
         shell: pwsh
@@ -71,17 +71,11 @@ jobs:
           RECEITA_PAYLOAD_PRIVATE_KEY: ${{ secrets.RECEITA_PAYLOAD_PRIVATE_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
+          Set-TimeZone -Id 'E. South America Standard Time'
           $failed = $false
-          $cases = @(
-            @{name='utc-double'; timezone='UTC'; single=$false},
-            @{name='utc-single'; timezone='UTC'; single=$true},
-            @{name='br-single'; timezone='E. South America Standard Time'; single=$true},
-            @{name='br-double'; timezone='E. South America Standard Time'; single=$false}
-          )
-          foreach ($case in $cases) {
-            Set-TimeZone -Id $case.timezone
-            $arguments = @('-m', 'experiments.receita_environment_probe.probe', '--mode', 'headed', '--output', "runs/environment-probe/$($case.name)")
-            if ($case.single) { $arguments += '--single-sdk' }
+          foreach ($case in @('original-sdk', 'single-sdk')) {
+            $arguments = @('-m', 'experiments.receita_environment_probe.pure_cdp', '--device', 'desktop', '--output', "runs/pure-cdp-windows/$case")
+            if ($case -eq 'single-sdk') { $arguments += '--single-sdk' }
             & python @arguments
             if ($LASTEXITCODE -ne 0) { $failed = $true }
           }
@@ -92,9 +86,91 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: environment-${{ matrix.os }}-${{ inputs.request_id }}
+          name: pure-cdp-windows-${{ inputs.request_id }}
           path: |
-            runs/environment-probe/*/result.json
-            runs/environment-probe/*/failure.png
+            runs/pure-cdp-windows/*/result.json
+          if-no-files-found: warn
+          retention-days: 1
+
+  android-avd:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PYTHONPATH: src
+      PYTHONUNBUFFERED: '1'
+      RECEITA_PAYLOAD: ${{ inputs.payload }}
+      RECEITA_PAYLOAD_PRIVATE_KEY: ${{ secrets.RECEITA_PAYLOAD_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+      - name: Install Pure CDP dependencies
+        run: uv pip install --system --no-progress seleniumbase==4.56.4 requests curl_cffi cryptography pypdf==6.21.3
+      - name: Enable KVM on this disposable worker
+        run: sudo chmod a+rw /dev/kvm
+      - name: Run actual Android with its native Chrome browser
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 3072M
+          disk-size: 4096M
+          emulator-options: -no-window -gpu swiftshader -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-boot-timeout: 600
+          disable-animations: true
+          enable-hw-keyboard: true
+          script: python -m experiments.receita_environment_probe.android
+      - name: Upload Android facts and redacted results only
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: pure-cdp-android-${{ inputs.request_id }}
+          path: |
+            runs/pure-cdp-android/android.json
+            runs/pure-cdp-android/*/result.json
+          if-no-files-found: warn
+          retention-days: 1
+
+  docker-desktop:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Build the isolated Pure CDP image
+        run: docker build --file experiments/receita_environment_probe/Dockerfile.pure-cdp --tag receita-pure-cdp:probe .
+      - name: Exercise the official form inside Docker and Xvfb
+        env:
+          RECEITA_PAYLOAD: ${{ inputs.payload }}
+          RECEITA_PAYLOAD_PRIVATE_KEY: ${{ secrets.RECEITA_PAYLOAD_PRIVATE_KEY }}
+        run: |
+          mkdir -p runs/pure-cdp-docker
+          sudo chown 1000:1000 runs/pure-cdp-docker
+          failed=0
+          for case in original-sdk single-sdk; do
+            extra=()
+            if [ "$case" = single-sdk ]; then extra+=(--single-sdk); fi
+            if ! docker run --rm --init --cpus 2 --memory 3g --shm-size 1g --cap-drop ALL --security-opt no-new-privileges \
+              --env RECEITA_PAYLOAD --env RECEITA_PAYLOAD_PRIVATE_KEY --env GITHUB_ACTIONS=true --env TZ=America/Sao_Paulo \
+              --mount "type=bind,src=$PWD/runs/pure-cdp-docker,dst=/app/runs" \
+              receita-pure-cdp:probe python -m experiments.receita_environment_probe.pure_cdp \
+              --device desktop --output "runs/$case" "${extra[@]}"; then failed=1; fi
+          done
+          sudo chown -R "$(id -u):$(id -g)" runs/pure-cdp-docker
+          exit "$failed"
+      - name: Upload Docker reports only
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: pure-cdp-docker-${{ inputs.request_id }}
+          path: runs/pure-cdp-docker/*/result.json
           if-no-files-found: warn
           retention-days: 1

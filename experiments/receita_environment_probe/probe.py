@@ -122,10 +122,13 @@ def main() -> int:
             route = urlsplit(response.url).path.strip("/").split("/")[0]
             if route in ("checksiteconfig", "getcaptcha", "checkcaptcha"):
                 try:
+                    detail = (challenge_metadata(response.json())
+                              if response.headers.get("content-type", "").startswith("application/json")
+                              else {"body_format": "opaque"})
                     report["challenge_responses"].append({
                         "at_ms": round((time.monotonic() - started) * 1000),
                         "route": route, "http": response.status,
-                        **challenge_metadata(response.json())})
+                        **detail})
                 except Exception as error:
                     report["challenge_responses"].append({"route": route,
                         "http": response.status, "probe_error": type(error).__name__})
