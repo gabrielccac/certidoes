@@ -47,6 +47,7 @@ def ui_metadata(xml):
     return [{"class": node.get("class"),
              "resource_id": re.sub(r"\d", "*", node.get("resource-id", "")),
              "bounds": node.get("bounds"), "enabled": node.get("enabled"),
+             "text_length": len(node.get("text", "")),
              "text": node.get("text") if node.get("text") in SAFE_TEXT else "<redacted>"}
             for node in ET.fromstring(xml).iter("node")][:250]
 
@@ -139,11 +140,13 @@ def main():
             raise TimeoutError("Native form did not expose its two inputs")
 
         for index, value in enumerate((document, native_birth)):
+            report["stage"] = "native_document_input" if index == 0 else "native_birth_input"
             node = inputs(device.dump_hierarchy())[index]
             left, top, right, bottom = bounds(node)
             device.click((left + right) // 2, (top + bottom) // 2)
             device.send_keys(value, clear=True)
-        device.hide_keyboard()
+        report["stage"] = "native_form_check"
+        device.press(111)  # Escape dismisses native input popups without the optional IME broadcast.
         nodes = inputs(device.dump_hierarchy())
         report["form_state"] = {
             "document_matches": len(nodes) == 2 and receita._digits(nodes[0].get("text")) == document,
