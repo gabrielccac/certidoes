@@ -150,6 +150,8 @@ def main() -> int:
     parser.add_argument("--spoof-device-memory", type=int, default=32)
     parser.add_argument("--spoof-hardware-concurrency", type=int, default=16)
     parser.add_argument("--spoof-avail-height", type=int, default=1032)
+    parser.add_argument("--managed-browser", action="store_true",
+        help="Launch via ManagedBrowser (own Xvfb, production no-display path) instead of CdpChrome; required on headless Linux runners where no X server is running")
     args = parser.parse_args()
     request = r.ReceitaRequest(os.environ["LIVE_DOCUMENT"], os.environ["LIVE_BIRTH"]) if args.verify else None
     document, kind, contributor = r._normalize(request) if request else (None, "CPF", None)
@@ -166,15 +168,36 @@ def main() -> int:
                     *(flag for flag in command[1:] if flag not in args.remove_chrome_arg)]
             return original_popen(command, **kwargs)
         subprocess.Popen = launch
-    chrome = r.CdpChrome(r._chrome_path(None), debug_port=9336, profile_dir=args.profile, incognito=args.incognito)
-    if args.accept_language:
-        preferences = chrome.profile_dir / "Default" / "Preferences"
-        preferences.parent.mkdir(parents=True, exist_ok=True)
-        preferences.write_text(json.dumps({"intl": {"accept_languages": args.accept_language,
-            "selected_languages": args.accept_language}}), encoding="utf-8")
+    chrome = None
+    manager = None
+    playwright = None
+    if args.managed_browser:
+        from certidoes.captcha.browser import ManagedBrowser
+        from playwright.sync_api import sync_playwright
+
+        manager = ManagedBrowser(str(args.profile), cdp_port=9336,
+                                 chrome_bin=r._chrome_path(None))
+    else:
+        chrome = r.CdpChrome(r._chrome_path(None), debug_port=9336, profile_dir=args.profile, incognito=args.incognito)
+        if args.accept_language:
+            preferences = chrome.profile_dir / "Default" / "Preferences"
+            preferences.parent.mkdir(parents=True, exist_ok=True)
+            preferences.write_text(json.dumps({"intl": {"accept_languages": args.accept_language,
+                "selected_languages": args.accept_language}}), encoding="utf-8")
     try:
-        page = chrome.start()
-        trace["arguments"] = chrome._process.args  # exact launch command, including Docker-only flags
+        if manager is not None:
+            cdp_url = manager.start()
+            playwright = sync_playwright().start()
+            browser = playwright.chromium.connect_over_cdp(cdp_url)
+            context = browser.contexts[0]
+            page = context.pages[0] if context.pages else context.new_page()
+            trace["launcher"] = "ManagedBrowser"
+            trace["arguments"] = [manager.chrome_bin, "--managed-browser",
+                f"display=:{manager.display}", f"window-size={manager.window}",
+                "--ozone-platform=x11", "--disable-dev-shm-usage", "--renderer-process-limit=4"]
+        else:
+            page = chrome.start()
+            trace["arguments"] = chrome._process.args  # exact launch command, including Docker-only flags
         cdp = page.context.new_cdp_session(page)
         if args.windows_ua:
             brands = [{"brand": "Chromium", "version": "152"},
@@ -259,7 +282,7 @@ def main() -> int:
             hcaptchaReady:!!window.hcaptcha && typeof window.hcaptcha.execute === 'function',
             hcaptchaFrames:[...document.querySelectorAll('iframe')].filter(x=>x.src.includes('hcaptcha.com')).length})""")
         if args.verify or args.token:
-            token = r._token(page, 30000)
+            token = r._token(page, 180000)
             trace["result"]["tokenLength"] = len(token)
         if args.verify:
             payload = r._payload(request, document, kind, contributor)
@@ -288,7 +311,14 @@ def main() -> int:
         trace["elapsedMs"] = round((time.monotonic()-started)*1000)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(trace, ensure_ascii=False, indent=2), encoding="utf-8")
-        chrome.close()
+        if manager is not None:
+            try:
+                if playwright is not None:
+                    playwright.stop()
+            finally:
+                manager.stop()
+        elif chrome is not None:
+            chrome.close()
         subprocess.Popen = original_popen
 
 

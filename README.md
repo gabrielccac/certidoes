@@ -56,9 +56,50 @@ Invoke-RestMethod http://127.0.0.1:8090/jobs -Method Post `
 ```
 
 O provedor local grava um relatório sem dados pessoais e não altera o
-Airtable. A execução local da Receita ainda depende do hCaptcha no navegador
-Windows/GitHub; para reproduzir o caminho completo use o Docker com o executor
-GitHub descrito abaixo.
+Airtable. A Receita também pode ser executada diretamente no Chrome local.
+O gerador local preenche o formulário oficial e mantém a validação e a
+emissão na mesma sessão do navegador. O solver visual de `captcha-solver` foi
+portado para `src/certidoes/captcha/`, com detecção dos modais de 400/520 px,
+extração da grade centralizada e suporte a arrastar a peça ao destino. São
+permitidas até seis rodadas, cobrindo a verificação inicial e o widget da
+Receita, com espera de até 180 segundos (uma chamada de modelo já iniciada
+pode ultrapassar esse prazo pelo seu timeout).
+
+Para executar somente a Receita no Linux, com Chrome e a sessão gráfica real
+do desktop disponíveis (`DISPLAY` ou `WAYLAND_DISPLAY`), use:
+
+```bash
+uv sync
+export RECEITA_EXECUTOR=local
+export OPENROUTER_API_KEY=...  # mesma chave usada no captcha-solver
+uv run python -m certidoes.sources.receita \
+  --documento SEU_CPF --data-nascimento AAAA-MM-DD \
+  --profile experiments/profile --output-dir runs/receita-local
+```
+
+O CLI não carrega `.env` automaticamente; exporte a chave na sessão. O modelo
+padrão é `meta/muse-spark-1.3`, alterável por `RECEITA_CAPTCHA_MODEL`. Somente os
+recortes do desafio são enviados ao OpenRouter; o PDF continua sendo obtido da
+Receita. Os recortes ficam em `runs/receita-local/captcha/`, ignorados pelo Git.
+A chave só é exigida quando surge um desafio visual. Sem uma sessão gráfica,
+o gerenciador Chrome/Xvfb portado do outro projeto serve para diagnóstico.
+
+Validação em 2026-10-28: `generate()` no desktop real PopOS emitiu um PDF de
+77.788 bytes em 7,5 segundos, com o CPF conferido no conteúdo. Essa execução
+não exigiu seleção de imagens nem arraste; a validação completa desses
+desafios continua pendente. As tentativas em contêiner e em Xvfb foram
+rejeitadas com `CaptchaFalhaValidacao`. O sucesso no desktop não valida esses
+ambientes nem o executor GitHub/Windows.
+
+O mesmo fluxo de formulário é usado no Windows. O workflow testa Windows
+2025 e Ubuntu 24.04, com Xvfb no Linux. Os logs registram abertura
+do navegador, submissão, rodadas visuais e respostas de validação/emissão,
+sem incluir documento, data de nascimento, token ou cookies. O workflow de
+diagnóstico limita a execução a uma tentativa completa; o resultado antigo
+de setembro não valida o solver visual atual.
+O diagnóstico registra geometria/visibilidade dos iframes e compara o token
+submetido com as respostas dos widgets, expondo apenas comprimentos e
+resultados da comparação. Zero rodadas não comprova ausência de desafio.
 
 ## Execução com Docker
 
@@ -111,6 +152,8 @@ uv run python -m certidoes.ingest.worker `
 | `RECEITA_GITHUB_REPO` | Repositório no formato `organização/nome`, normalmente `gabrielccac/certidoes`. |
 | `RECEITA_GITHUB_TOKEN` | Token pessoal fine-grained do GitHub, limitado a este repositório e com `Actions: Read and write`. Ele é injetado em tempo de execução e não entra no Dockerfile. |
 | `RECEITA_GITHUB_REF` | Branch ou tag que contém o workflow; use `main` em produção. |
+| `OPENROUTER_API_KEY` | Chave do OpenRouter para resolver desafios visuais. No executor GitHub, configure também o secret com esse nome no repositório. |
+| `RECEITA_CAPTCHA_MODEL` | Modelo visual do OpenRouter; padrão `meta/muse-spark-1.3`. |
 
 ### Token do GitHub
 
@@ -164,3 +207,10 @@ uv run python -m pytest tests -q
 O teste do Airtable inicia um servidor HTTP local da biblioteca padrão. Assim,
 ele valida o cliente e o provider reais, incluindo `GET`, claim para
 `PROCESSANDO`, `PATCH` final e URLs de anexos, sem alterar nenhuma base real.
+
+## Receita Android por CDP direto
+
+A versão sem SeleniumBase foi validada com PDF e CPF conferidos em GitHub Actions
+e Docker local com KVM. O workflow `receita-android-cdp.yml` executa a checagem
+de conexão antes da emissão. Configuração e evidências em
+[experiments/receita_direct_cdp_probe/README.md](experiments/receita_direct_cdp_probe/README.md).
