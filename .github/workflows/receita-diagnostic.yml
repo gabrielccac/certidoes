@@ -1,162 +1,90 @@
-name: Receita browser diagnostic
-run-name: Receita ${{ inputs.mode }} ${{ inputs.request_id }}
-
-# Dispatch for headed Chrome on Windows and on Linux/Xvfb.
-# Depth is controlled by `mode`:
-# - fingerprint: no secrets needed, records the full browser fingerprint
-#   (UA, WebGL, canvas hash, locale, timezone).
-# - token: additionally mints a real hCaptcha token (needs secrets).
-# - verify: full hCaptcha validation (needs secrets).
-# - issue: runs the complete Receita flow and uploads the generated PDF.
+name: Receita desktop self-hosted probe
+run-name: Receita self-hosted ${{ inputs.request_id }}
 
 on:
   workflow_dispatch:
     inputs:
-      mode:
-        description: "Probe depth"
-        type: choice
-        default: fingerprint
-        options: [fingerprint, token, verify, issue]
       request_id:
-        description: "Opaque request identifier"
-        required: false
-        default: ""
+        description: Opaque test identifier
+        required: true
       payload:
-        description: "Encrypted Receita request payload"
-        required: false
-        default: ""
+        description: Encrypted Receita request
+        required: true
 
 permissions:
   contents: read
 
 concurrency:
-  group: receita-diagnostic-${{ inputs.mode }}-${{ inputs.request_id || github.run_id }}
-  cancel-in-progress: true
+  group: receita-self-hosted-desktop
+  cancel-in-progress: false
 
 jobs:
-  probe:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-2025, ubuntu-24.04]
-    runs-on: ${{ matrix.os }}
+  issue:
+    runs-on: [receita-desktop-probe]
     timeout-minutes: 10
     env:
-      PYTHONUTF8: "1"
-      PYTHONUNBUFFERED: "1"
       PYTHONPATH: src
-
+      RECEITA_EXECUTOR: local
+      PYTHONUNBUFFERED: "1"
     steps:
-      - name: Check out source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          python-version: "3.12"
+          persist-credentials: false
 
-      - name: Set up uv cache
-        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
-        with:
-          enable-cache: true
-          cache-dependency-glob: |
-            pyproject.toml
-            uv.lock
-
-      - name: Install project dependencies
-        shell: pwsh
-        run: uv pip install --system --no-progress .
-
-      - name: Ensure Xvfb on Linux
-        if: runner.os == 'Linux'
+      - name: Check existing desktop
         shell: bash
         run: |
-          if ! command -v Xvfb; then
-            sudo apt-get update
-            sudo apt-get install -y xvfb
-          fi
-          echo "DISPLAY=" >> "$GITHUB_ENV"
-          echo "WAYLAND_DISPLAY=" >> "$GITHUB_ENV"
-          Xvfb -help 2>&1 | head -5 || true
+          test -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}"
+          command -v uv google-chrome pdftotext
+          google-chrome --version
 
-      - name: Locate Chrome
-        shell: pwsh
-        run: |
-          if ($IsWindows) {
-            $chrome = @(
-              "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
-              "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
-            ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-            if (-not $chrome) { throw "Google Chrome was not found on the runner" }
-          } else {
-            $chrome = (Get-Command google-chrome, google-chrome-stable -ErrorAction SilentlyContinue | Select-Object -First 1).Source
-            if (-not $chrome) { throw "Google Chrome was not found on the runner" }
-          }
-          "CHROME_PATH=$chrome" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          & $chrome --version
+      - name: Install locked project dependencies
+        shell: bash
+        run: uv sync --frozen --python 3.11
 
-      - name: Run Receita probe
+      - name: Issue and validate PDF in the existing desktop session
+        shell: bash
         env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          LIVE_DOCUMENT: ${{ secrets.RECEITA_TEST_DOCUMENT }}
-          LIVE_BIRTH: ${{ secrets.RECEITA_TEST_BIRTH }}
           RECEITA_PAYLOAD: ${{ inputs.payload }}
           RECEITA_PAYLOAD_PRIVATE_KEY: ${{ secrets.RECEITA_PAYLOAD_PRIVATE_KEY }}
-        shell: pwsh
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
-          $mode = '${{ inputs.mode }}'
-          $hasPayload = -not [string]::IsNullOrWhiteSpace($env:RECEITA_PAYLOAD)
-          if (($mode -ne 'fingerprint') -and (-not $hasPayload) -and ([string]::IsNullOrWhiteSpace($env:LIVE_DOCUMENT) -or [string]::IsNullOrWhiteSpace($env:LIVE_BIRTH))) {
-            throw "Mode '$mode' needs an encrypted payload or test repository secrets"
-          }
-          if ($mode -eq 'issue') {
-            $document = ([string]$env:LIVE_DOCUMENT).Trim()
-            $birth = ([string]$env:LIVE_BIRTH).Trim()
-            New-Item -ItemType Directory -Force -Path runs/receita-issue, tmp/receita-issue-profile | Out-Null
-            if ($env:RECEITA_PAYLOAD) {
-              python -m certidoes.github_payload decrypt --ciphertext $env:RECEITA_PAYLOAD --output tmp/receita-request.json
-              $request = Get-Content tmp/receita-request.json | ConvertFrom-Json
-              $document = $request.documento
-              $birth = $request.data_nascimento
-            }
-            Write-Output "::add-mask::$document"
-            Write-Output "::add-mask::$birth"
-            python -m certidoes.sources.receita `
-              --documento $document `
-              --data-nascimento $birth `
-              --output-dir runs/receita-issue `
-              --profile tmp/receita-issue-profile `
-              --captcha-retries 1
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            $pdfs = @(Get-ChildItem runs/receita-issue -Filter *.pdf -File)
-            if ($pdfs.Count -ne 1) { throw "Expected exactly one generated certificate" }
-            Move-Item -LiteralPath $pdfs[0].FullName -Destination runs/receita-issue/certificate.pdf
-            exit 0
-          }
-          New-Item -ItemType Directory -Force -Path runs/receita-probe, tmp/receita-probe-profile | Out-Null
-          $cmd = @(
-            'experiments/receita_compare.py',
-            '--output', 'runs/receita-probe/trace.json',
-            '--profile', 'tmp/receita-probe-profile',
-            '--incognito', '--transport', 'browser'
-          )
-          if ($env:RUNNER_OS -eq 'Linux') { $cmd += '--managed-browser' }
-          if ($mode -eq 'token') { $cmd += '--token' }
-          if ($mode -eq 'verify') {
-            $env:LIVE_DOCUMENT = $env:LIVE_DOCUMENT.Trim()
-            $env:LIVE_BIRTH = $env:LIVE_BIRTH.Trim()
-            $cmd += '--verify'
-          }
-          python @cmd
+          uv run --frozen python - <<'PY'
+          import json, os, re, subprocess, time
+          from pathlib import Path
+          from certidoes.github_payload import decrypt
+          from certidoes.sources.receita import ReceitaRequest, generate
 
-      - name: Upload redacted trace
+          out = Path("runs/self-hosted-probe")
+          out.mkdir(parents=True, exist_ok=True)
+          report = {"executor": "self-hosted desktop", "profile": "fresh"}
+          started = time.monotonic()
+          try:
+              payload = decrypt(os.environ["RECEITA_PAYLOAD"], os.environ["RECEITA_PAYLOAD_PRIVATE_KEY"])
+              for value in payload.values():
+                  print(f"::add-mask::{value}", flush=True)
+              result = generate(ReceitaRequest(**payload, output_dir=out,
+                  profile_dir=Path("tmp/self-hosted-profile"), captcha_retries=1))
+              pdf = result.pdf_path.read_bytes()
+              assert pdf.startswith(b"%PDF-") and len(pdf) > 1000, "Invalid PDF"
+              text = subprocess.check_output(["pdftotext", str(result.pdf_path), "-"], text=True)
+              assert payload["documento"] in re.sub(r"\D", "", text), "Document mismatch"
+              result.pdf_path.replace(out / "certificate.pdf")
+              report.update(status="success", bytes=len(pdf), document_matches=True, metadata=result.metadata)
+          except Exception as error:
+              report.update(status="error", error_type=type(error).__name__,
+                  stage=getattr(error, "stage", None), code=getattr(error, "code", None))
+          report["elapsed_s"] = round(time.monotonic() - started, 2)
+          (out / "result.json").write_text(json.dumps(report, indent=2) + "\n")
+          print(json.dumps(report), flush=True)
+          raise SystemExit(0 if report["status"] == "success" else 1)
+          PY
+
+      - name: Upload report only
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: receita-${{ matrix.os }}-${{ inputs.mode }}-${{ inputs.request_id }}-${{ github.run_id }}
-          path: |
-            runs/receita-probe/trace.json
-            runs/receita-issue/*.pdf
-            runs/receita-issue/captcha/*.json
+          name: receita-self-hosted-${{ inputs.request_id }}
+          path: runs/self-hosted-probe/result.json
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 1
