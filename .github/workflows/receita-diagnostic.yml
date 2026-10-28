@@ -1,5 +1,5 @@
-name: Receita Windows hosted comparison
-run-name: Receita Windows ${{ inputs.request_id }}
+name: Receita Chrome version comparison
+run-name: Receita Chrome versions ${{ inputs.request_id }}
 
 on:
   workflow_dispatch:
@@ -16,64 +16,58 @@ permissions:
 
 jobs:
   compare:
-    name: windows-2025 / ${{ matrix.browser }}
-    strategy:
-      fail-fast: false
-      matrix:
-        browser: [standard, seleniumbase]
     runs-on: windows-2025
-    timeout-minutes: 12
+    timeout-minutes: 15
     env:
       PYTHONUTF8: "1"
       PYTHONUNBUFFERED: "1"
       PYTHONPATH: src
-
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
-
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
-
-      - name: Install project and PDF parser
+      - name: Install project and pinned probe dependencies
         shell: pwsh
-        run: uv pip install --system --no-progress . pypdf==6.21.3
+        run: uv pip install --system --no-progress . pypdf==6.21.3 playwright==1.64.1
 
-      - name: Install SeleniumBase for its comparison job
-        if: matrix.browser == 'seleniumbase'
-        shell: pwsh
-        run: uv pip install --system --no-progress seleniumbase==4.56.4
-
-      - name: Locate Chrome
-        shell: pwsh
-        run: |
-          $chrome = @(
-            "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
-            "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
-          ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-          if (-not $chrome) { throw "Google Chrome not found" }
-          "CHROME_PATH=$chrome" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          & $chrome --version
-
-      - name: Run full Receita flow with a headed browser
+      - name: Compare Chrome 155 and 156 sequentially on the same worker
         shell: pwsh
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           RECEITA_PAYLOAD: ${{ inputs.payload }}
           RECEITA_PAYLOAD_PRIVATE_KEY: ${{ secrets.RECEITA_PAYLOAD_PRIVATE_KEY }}
         run: |
-          python experiments/receita_actions_probe/runner.py --browser '${{ matrix.browser }}'
-          exit $LASTEXITCODE
+          New-Item -ItemType Directory -Force runs/chrome-version-probe | Out-Null
+          $failed = $false
+          foreach ($version in @('155.0.8059.84', '156.0.8078.73')) {
+            $archive = Join-Path $env:RUNNER_TEMP "chrome-$version.zip"
+            $destination = Join-Path $env:RUNNER_TEMP "chrome-$version"
+            Invoke-WebRequest "https://storage.googleapis.com/chrome-for-testing-public/$version/win64/chrome-win64.zip" -OutFile $archive
+            Expand-Archive -LiteralPath $archive -DestinationPath $destination
+            $env:CHROME_PATH = Join-Path $destination 'chrome-win64/chrome.exe'
+            & $env:CHROME_PATH --version
+            if (Test-Path tmp/actions-browser-probe/standard) {
+              Remove-Item -LiteralPath tmp/actions-browser-probe/standard -Recurse -Force
+            }
+            python experiments/receita_actions_probe/runner.py --browser standard
+            $exitCode = $LASTEXITCODE
+            if (Test-Path runs/actions-browser-probe/standard/result.json) {
+              Copy-Item runs/actions-browser-probe/standard/result.json "runs/chrome-version-probe/$version.json"
+            }
+            if ($exitCode -ne 0) { $failed = $true }
+          }
+          if ($failed) { exit 1 }
+          exit 0
 
-      - name: Upload report only
+      - name: Upload comparison reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: windows-probe-${{ matrix.browser }}-${{ inputs.request_id }}
-          path: runs/actions-browser-probe/${{ matrix.browser }}/result.json
+          name: chrome-versions-${{ inputs.request_id }}
+          path: runs/chrome-version-probe/*.json
           if-no-files-found: warn
           retention-days: 1
