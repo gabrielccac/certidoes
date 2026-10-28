@@ -16,7 +16,7 @@ on:
         description: "Probe depth"
         type: choice
         default: fingerprint
-        options: [fingerprint, token, verify, issue]
+        options: [fingerprint, token, verify, issue, selenium]
       request_id:
         description: "Opaque request identifier"
         required: false
@@ -65,7 +65,9 @@ jobs:
 
       - name: Install project dependencies
         shell: pwsh
-        run: uv pip install --system --no-progress .
+        run: |
+          uv pip install --system --no-progress .
+          if ('${{ inputs.mode }}' -eq 'selenium') { uv pip install --system --no-progress seleniumbase }
 
       - name: Ensure Xvfb on Linux
         if: runner.os == 'Linux'
@@ -134,6 +136,12 @@ jobs:
             exit 0
           }
           New-Item -ItemType Directory -Force -Path runs/receita-probe, tmp/receita-probe-profile | Out-Null
+          if ($mode -eq 'selenium') {
+            $env:LIVE_DOCUMENT = $env:LIVE_DOCUMENT.Trim()
+            $env:LIVE_BIRTH = $env:LIVE_BIRTH.Trim()
+            python experiments/receita_selenium_probe.py --output runs/receita-probe/trace.json
+            exit $LASTEXITCODE
+          }
           $cmd = @(
             'experiments/receita_compare.py',
             '--output', 'runs/receita-probe/trace.json',
