@@ -22,7 +22,10 @@ def encrypt(payload: dict, public_key_pem: str) -> str:
     return base64.urlsafe_b64encode(ciphertext).decode()
 
 
-def decrypt(ciphertext: str, private_key_pem: str) -> dict:
+RECEITA_FIELDS = ("documento", "data_nascimento")
+
+
+def decrypt(ciphertext: str, private_key_pem: str, allowed: tuple[str, ...] = RECEITA_FIELDS) -> dict:
     key = serialization.load_pem_private_key(private_key_pem.encode(), password=None)
     plaintext = key.decrypt(
         base64.urlsafe_b64decode(ciphertext.encode()),
@@ -30,8 +33,8 @@ def decrypt(ciphertext: str, private_key_pem: str) -> dict:
                      algorithm=hashes.SHA256(), label=None),
     )
     payload = json.loads(plaintext)
-    if set(payload) != {"documento", "data_nascimento"}:
-        raise ValueError("invalid Receita payload fields")
+    if set(payload) != set(allowed):
+        raise ValueError("invalid payload fields")
     return payload
 
 
@@ -40,6 +43,8 @@ def main() -> int:
     parser.add_argument("action", choices=("encrypt", "decrypt"))
     parser.add_argument("--payload", type=Path)
     parser.add_argument("--ciphertext")
+    parser.add_argument("--allow", default=",".join(RECEITA_FIELDS),
+                        help="comma-separated payload fields expected on decrypt")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.action == "encrypt":
@@ -49,7 +54,7 @@ def main() -> int:
         args.output.write_text(value, encoding="ascii")
     else:
         private_key = os.environ["RECEITA_PAYLOAD_PRIVATE_KEY"]
-        payload = decrypt(args.ciphertext or "", private_key)
+        payload = decrypt(args.ciphertext or "", private_key, tuple(args.allow.split(",")))
         args.output.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     return 0
 

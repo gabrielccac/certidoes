@@ -101,14 +101,71 @@ def _find_solved_marker(page, asset: Path = SOLVED_ASSET) -> tuple[bool, float]:
         raise CertificateError(SOURCE, "challenge", "opencv_indisponivel", "OpenCV is required to inspect the solved marker")
 
 
+def _log_challenge(**fields) -> None:
+    # Operational trace only: no document, name or URL query ever goes in here.
+    print(json.dumps({"fazenda_challenge": fields}, ensure_ascii=False), flush=True)
+
+
+def _frame_hosts(page) -> list[str]:
+    from urllib.parse import urlparse
+
+    try:
+        return sorted({urlparse(frame.url).netloc for frame in page.frames if frame.url})
+    except Exception:
+        return []
+
+
+def _widget_box(page) -> dict | None:
+    try:
+        return page.locator('iframe[src*="challenges.cloudflare.com"]').first.bounding_box(timeout=2000)
+    except Exception:
+        return None
+
+
+def _widget_snapshot(page, label: str) -> None:
+    """Log a small PNG crop (base64) of the challenge area so the real rendering
+    can be inspected from the Cloud Run logs. The crop starts below the
+    "Gerar PDF" button, so the form fields (document number) never appear in it."""
+    try:
+        box = _widget_box(page)
+        info = {"event": "widget_snapshot", "label": label, "box": box,
+                "dpr": page.evaluate("window.devicePixelRatio")}
+        if box:
+            pad = 30
+            clip = {"x": max(box["x"] - pad, 0), "y": max(box["y"] - pad, 0),
+                    "width": box["width"] + 2 * pad, "height": box["height"] + 2 * pad}
+        else:
+            button = page.get_by_role("button", name="Gerar PDF", exact=True).bounding_box(timeout=2000)
+            viewport = page.evaluate("({w: window.innerWidth, h: window.innerHeight})")
+            if not button:
+                _log_challenge(event="widget_snapshot_skipped", label=label, reason="no_anchor")
+                return
+            top = button["y"] + button["height"] + 4
+            clip = {"x": 0, "y": top, "width": viewport["w"], "height": min(140, viewport["h"] - top)}
+            info["anchor"] = "below_gerar_pdf"
+        png = page.screenshot(type="png", clip=clip)
+        info["image_bytes"] = len(png)
+        info["image_b64"] = base64.b64encode(png).decode()
+        _log_challenge(**info)
+    except Exception as exc:
+        _log_challenge(event="widget_snapshot_failed", label=label, error=type(exc).__name__)
+
+
 def _wait_solved(page, timeout_ms: int) -> float:
-    deadline = time.monotonic() + timeout_ms / 1000
+    """Wait passively for the widget to clear itself; nothing in it is clicked."""
+    started = time.monotonic()
+    deadline = started + timeout_ms / 1000
     confidence = 0.0
     while time.monotonic() < deadline:
         solved, confidence = _find_solved_marker(page)
         if solved:
+            _log_challenge(outcome="solved", solved_confidence=round(confidence, 3),
+                           elapsed_s=round(time.monotonic() - started, 1))
             return confidence
         page.wait_for_timeout(500)
+    _widget_snapshot(page, "final")
+    _log_challenge(outcome="not_solved", last_solved_confidence=round(confidence, 3),
+                   frame_hosts=_frame_hosts(page))
     raise CertificateError(SOURCE, "challenge", "captcha_nao_resolvido", "Fazenda challenge was not solved", retryable=True)
 
 
@@ -162,8 +219,47 @@ def _fetch_pdf(page, url: str) -> bytes:
     return base64.b64decode(encoded)
 
 
+def _github_generate(request: FazendaRequest, documento: str) -> CertificateResult:
+    """Emit on a GitHub-hosted runner (opt-in via FAZENDA_EXECUTOR=github)."""
+    import uuid
+
+    from certidoes.github_executor import run_and_fetch_pdf
+    from certidoes.github_payload import encrypt
+
+    repo = os.environ.get("FAZENDA_GITHUB_REPO") or os.environ.get("RECEITA_GITHUB_REPO")
+    token = (os.environ.get("FAZENDA_GITHUB_TOKEN") or os.environ.get("RECEITA_GITHUB_TOKEN")
+             or os.environ.get("GITHUB_TOKEN"))
+    public_key = os.environ.get("RECEITA_GITHUB_PUBLIC_KEY")
+    if not public_key:
+        key_file = Path(__file__).resolve().parents[1] / "receita_github_public.pem"
+        if key_file.exists():
+            public_key = key_file.read_text(encoding="ascii")
+    if not repo or not token or not public_key:
+        raise CertificateError(SOURCE, "github", "github_config_missing", "GitHub executor is not configured")
+    request_id = uuid.uuid4().hex
+    encrypted = encrypt({"documento": documento, "tipo_pessoa": request.tipo_pessoa,
+                         "finalidade": request.finalidade, "tipo_certidao": request.tipo_certidao}, public_key)
+    pdf, run_id = run_and_fetch_pdf(
+        source=SOURCE, repo=repo, token=token,
+        workflow=os.environ.get("FAZENDA_GITHUB_WORKFLOW", "fazenda-emit.yml"),
+        ref=os.environ.get("FAZENDA_GITHUB_REF", "main"),
+        inputs={"payload": encrypted}, request_id=request_id,
+        timeout_s=int(os.environ.get("FAZENDA_GITHUB_TIMEOUT_S", "900")),
+        poll_s=float(os.environ.get("FAZENDA_GITHUB_POLL_S", "5")),
+    )
+    request.output_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{request.tipo_pessoa} - {request.finalidade} ({documento}).pdf"
+    destination = request.output_dir / filename
+    _save_pdf(destination, pdf)
+    return CertificateResult(SOURCE, "CPF" if request.tipo_pessoa == "Pessoa Física" else "CNPJ", filename, destination,
+                             {"executor": "github", "run_id": run_id, "purpose": request.finalidade,
+                              "certificate_type": request.tipo_certidao})
+
+
 def generate(request: FazendaRequest) -> CertificateResult:
     documento = _validate(request)
+    if os.environ.get("FAZENDA_EXECUTOR") == "github":
+        return _github_generate(request, documento)
     request.output_dir.mkdir(parents=True, exist_ok=True)
     chrome = CdpChrome(_chrome_path(), debug_port=request.debug_port, profile_dir=request.profile_dir)
     try:
