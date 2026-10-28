@@ -1,0 +1,62 @@
+name: Receita Android OpenATX
+run-name: Receita Android OpenATX ${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: Opaque diagnosis identifier
+        required: true
+      payload:
+        description: Encrypted Receita request
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  android-openatx:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PYTHONPATH: src
+      PYTHONUNBUFFERED: '1'
+      RECEITA_PAYLOAD: ${{ inputs.payload }}
+      RECEITA_PAYLOAD_PRIVATE_KEY: ${{ secrets.RECEITA_PAYLOAD_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12.15'
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+      - name: Install native Android controller without SeleniumBase
+        run: uv pip install --system --no-progress uiautomator2==3.7.1 requests curl_cffi cryptography pypdf==6.21.3
+      - name: Enable KVM on this disposable worker
+        run: sudo chmod a+rw /dev/kvm
+      - name: Run Android native UI and PDF download
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 3072M
+          disk-size: 4096M
+          emulator-options: -no-window -gpu swiftshader -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-boot-timeout: 600
+          disable-animations: true
+          enable-hw-keyboard: true
+          script: python -m experiments.receita_environment_probe.android_openatx
+      - name: Upload redacted native Android evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: android-openatx-${{ inputs.request_id }}
+          path: |
+            runs/android-openatx/result.json
+            runs/android-openatx/native-ui.json
+          if-no-files-found: warn
+          retention-days: 1

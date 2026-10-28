@@ -1,5 +1,5 @@
-name: Receita Pure CDP and Android AVD
-run-name: Receita Android ${{ inputs.request_id }}
+name: Receita Android OpenATX
+run-name: Receita Android OpenATX ${{ inputs.request_id }}
 
 on:
   workflow_dispatch:
@@ -15,84 +15,7 @@ permissions:
   contents: read
 
 jobs:
-  windows-desktop:
-    name: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - {os: windows-2025, platform: win64}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    env:
-      PYTHONUTF8: "1"
-      PYTHONUNBUFFERED: "1"
-      PYTHONPATH: src
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
-        with:
-          python-version: '3.12'
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
-      - name: Install fixed probe dependencies
-        shell: pwsh
-        run: uv pip install --system --no-progress seleniumbase==4.56.4 requests curl_cffi cryptography pypdf==6.21.3
-
-      - name: Download the same Chrome build for this platform
-        shell: pwsh
-        run: |
-          $platform = '${{ matrix.platform }}'
-          $archive = Join-Path $env:RUNNER_TEMP 'receita-chrome.zip'
-          $destination = Join-Path $env:RUNNER_TEMP 'receita-chrome'
-          Invoke-WebRequest "https://storage.googleapis.com/chrome-for-testing-public/155.0.8059.84/$platform/chrome-$platform.zip" -OutFile $archive
-          if ($IsWindows) {
-            Expand-Archive -LiteralPath $archive -DestinationPath $destination
-            $chrome = Join-Path $destination 'chrome-win64/chrome.exe'
-          } elseif ($IsMacOS) {
-            /usr/bin/ditto -x -k $archive $destination
-            $chrome = Join-Path $destination 'chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'
-            chmod +x $chrome
-          } else {
-            unzip -q $archive -d $destination
-            $chrome = Join-Path $destination 'chrome-linux64/chrome'
-            chmod +x $chrome
-            chmod +x (Join-Path $destination 'chrome-linux64/chrome_crashpad_handler')
-          }
-          "CHROME_PATH=$chrome" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          & $chrome --version
-
-      - name: Diagnose the official form in each mode
-        shell: pwsh
-        env:
-          RECEITA_PAYLOAD: ${{ inputs.payload }}
-          RECEITA_PAYLOAD_PRIVATE_KEY: ${{ secrets.RECEITA_PAYLOAD_PRIVATE_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        run: |
-          Set-TimeZone -Id 'E. South America Standard Time'
-          $failed = $false
-          foreach ($case in @('original-sdk', 'single-sdk')) {
-            $arguments = @('-m', 'experiments.receita_environment_probe.pure_cdp', '--device', 'desktop', '--output', "runs/pure-cdp-windows/$case")
-            if ($case -eq 'single-sdk') { $arguments += '--single-sdk' }
-            & python @arguments
-            if ($LASTEXITCODE -ne 0) { $failed = $true }
-          }
-          if ($failed) { exit 1 }
-          exit 0
-
-      - name: Upload redacted reports and masked screenshots
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: pure-cdp-windows-${{ inputs.request_id }}
-          path: |
-            runs/pure-cdp-windows/*/result.json
-          if-no-files-found: warn
-          retention-days: 1
-
-  android-avd:
+  android-openatx:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
@@ -106,13 +29,13 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
-          python-version: '3.12'
+          python-version: '3.12.15'
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
-      - name: Install Pure CDP dependencies
-        run: uv pip install --system --no-progress seleniumbase==4.56.4 requests curl_cffi cryptography pypdf==6.21.3
+      - name: Install native Android controller without SeleniumBase
+        run: uv pip install --system --no-progress uiautomator2==3.7.1 requests curl_cffi cryptography pypdf==6.21.3
       - name: Enable KVM on this disposable worker
         run: sudo chmod a+rw /dev/kvm
-      - name: Run actual Android with its native Chrome browser
+      - name: Run Android native UI and PDF download
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
           api-level: 36
@@ -126,51 +49,14 @@ jobs:
           emulator-boot-timeout: 600
           disable-animations: true
           enable-hw-keyboard: true
-          script: python -m experiments.receita_environment_probe.android
-      - name: Upload Android facts and redacted results only
+          script: python -m experiments.receita_environment_probe.android_openatx
+      - name: Upload redacted native Android evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: pure-cdp-android-${{ inputs.request_id }}
+          name: android-openatx-${{ inputs.request_id }}
           path: |
-            runs/pure-cdp-android/android.json
-            runs/pure-cdp-android/*/result.json
-          if-no-files-found: warn
-          retention-days: 1
-
-  docker-desktop:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - name: Build the isolated Pure CDP image
-        run: docker build --file experiments/receita_environment_probe/Dockerfile.pure-cdp --tag receita-pure-cdp:probe .
-      - name: Exercise the official form inside Docker and Xvfb
-        env:
-          RECEITA_PAYLOAD: ${{ inputs.payload }}
-          RECEITA_PAYLOAD_PRIVATE_KEY: ${{ secrets.RECEITA_PAYLOAD_PRIVATE_KEY }}
-        run: |
-          mkdir -p runs/pure-cdp-docker
-          sudo chown 1000:1000 runs/pure-cdp-docker
-          failed=0
-          for case in original-sdk single-sdk; do
-            extra=()
-            if [ "$case" = single-sdk ]; then extra+=(--single-sdk); fi
-            if ! docker run --rm --init --cpus 2 --memory 3g --shm-size 1g --cap-drop ALL --security-opt no-new-privileges \
-              --env RECEITA_PAYLOAD --env RECEITA_PAYLOAD_PRIVATE_KEY --env GITHUB_ACTIONS=true --env TZ=America/Sao_Paulo \
-              --mount "type=bind,src=$PWD/runs/pure-cdp-docker,dst=/app/runs" \
-              receita-pure-cdp:probe python -m experiments.receita_environment_probe.pure_cdp \
-              --device desktop --output "runs/$case" "${extra[@]}"; then failed=1; fi
-          done
-          sudo chown -R "$(id -u):$(id -g)" runs/pure-cdp-docker
-          exit "$failed"
-      - name: Upload Docker reports only
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: pure-cdp-docker-${{ inputs.request_id }}
-          path: runs/pure-cdp-docker/*/result.json
+            runs/android-openatx/result.json
+            runs/android-openatx/native-ui.json
           if-no-files-found: warn
           retention-days: 1
