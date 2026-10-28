@@ -62,7 +62,7 @@ jobs:
             --finalidade "$(jq -r .finalidade tmp/request.json)" \
             --tipo-certidao "$(jq -r .tipo_certidao tmp/request.json)" \
             --output-dir runs/fazenda-issue --profile tmp/profile > tmp/result.json
-          echo "status: $(jq -r '.status + " " + (.code // "")' tmp/result.json)"
+          echo "status: $(jq -rs 'last | (.status // "?") + " " + (.code // "")' tmp/result.json)"
 
       - name: Upload certificate
         uses: actions/upload-artifact@v4
