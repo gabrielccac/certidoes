@@ -42,6 +42,7 @@ jobs:
     timeout-minutes: 10
     env:
       PYTHONUTF8: "1"
+      PYTHONUNBUFFERED: "1"
       PYTHONPATH: src
 
     steps:
@@ -111,7 +112,8 @@ jobs:
               --documento $document `
               --data-nascimento $birth `
               --output-dir runs/receita-issue `
-              --profile tmp/receita-issue-profile
+              --profile tmp/receita-issue-profile `
+              --captcha-retries 1
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             $pdfs = @(Get-ChildItem runs/receita-issue -Filter *.pdf -File)
             if ($pdfs.Count -ne 1) { throw "Expected exactly one generated certificate" }
@@ -141,5 +143,6 @@ jobs:
           path: |
             runs/receita-probe/trace.json
             runs/receita-issue/*.pdf
+            runs/receita-issue/captcha/*.json
           if-no-files-found: warn
           retention-days: 7

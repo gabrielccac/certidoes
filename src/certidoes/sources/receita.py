@@ -127,6 +127,10 @@ def _chrome_path(configured: str | None) -> str:
     raise CertificateError(SOURCE, "browser", "chrome_nao_encontrado", "Google Chrome executable was not found")
 
 
+def _log(event: str, **fields) -> None:
+    print(json.dumps({"source": SOURCE, "event": event, **fields}), file=sys.stderr, flush=True)
+
+
 def _solve_visual(page, captures: Path, round_number: int) -> None:
     from certidoes.captcha.hcaptcha import solve_round
 
@@ -136,10 +140,14 @@ def _solve_visual(page, captures: Path, round_number: int) -> None:
     if round_number >= 6:
         raise CertificateError(SOURCE, "challenge", "hcaptcha_falhou", "hCaptcha round limit reached", retryable=True)
     captures.mkdir(parents=True, exist_ok=True)
+    _log("captcha_round_started", round=round_number + 1)
     _, info = solve_round(page, str(captures), round_number,
                          os.environ.get("RECEITA_CAPTCHA_MODEL", "meta/muse-spark-1.3"),
                          reasoning_effort="medium")
     (captures / f"r{round_number}-result.json").write_text(json.dumps(info), encoding="utf-8")
+    _log("captcha_round_finished", round=round_number + 1, task=info.get("task"),
+         submitted=info.get("submitted", False), reason=info.get("why"),
+         solver_error=bool(info.get("solve_error")), token_length=(info.get("state_after") or {}).get("tok", 0))
     if info.get("solve_error") or info.get("why") == "interrupted-clicks":
         raise CertificateError(SOURCE, "challenge", "hcaptcha_falhou", "hCaptcha image solving failed", retryable=True)
 
@@ -219,7 +227,7 @@ def _browser(request: ReceitaRequest):
             yield context.pages[0] if context.pages else context.new_page()
         else:
             chrome = CdpChrome(chrome_path, debug_port=request.debug_port,
-                               profile_dir=request.profile_dir, incognito=sys.platform != "linux")
+                               profile_dir=request.profile_dir)
             stack.callback(chrome.close)
             yield chrome.start()
 
@@ -428,10 +436,12 @@ def _browser_generate(request: ReceitaRequest, documento: str, tipo: str, contri
     base = _payload(request, documento, tipo, contributor)
     try:
         with _browser(request) as page:
+            _log("browser_started", platform=sys.platform)
             responses = []
             page.on("response", lambda response: responses.append(response)
                     if response.url == VERIFICAR_URL and response.request.method == "POST" else None)
             page.goto(PAGE_URLS[tipo], wait_until="domcontentloaded", timeout=request.token_timeout_ms)
+            _log("page_ready")
             rounds = 0
             deadline = time.monotonic() + request.token_timeout_ms / 1000
             while vis_modal(page):
@@ -445,6 +455,7 @@ def _browser_generate(request: ReceitaRequest, documento: str, tipo: str, contri
                 year, month, day = base["dataNascimento"].split("-")
                 page.locator('input[name="dataNascimento"]').fill(f"{day}/{month}/{year}")
             page.get_by_role("button", name="Emitir Certidão", exact=True).click(timeout=request.token_timeout_ms)
+            _log("form_submitted", captcha_rounds=rounds)
             while not responses and time.monotonic() < deadline:
                 if vis_modal(page):
                     _solve_visual(page, request.output_dir / "captcha", rounds)
@@ -455,6 +466,7 @@ def _browser_generate(request: ReceitaRequest, documento: str, tipo: str, contri
             if not responses:
                 raise CertificateError(SOURCE, "challenge", "hcaptcha_falhou", "Receita form verification timed out", retryable=True)
             verification = responses[-1]
+            _log("verification_received", http=verification.status, captcha_rounds=rounds)
             _require_ok(SimpleNamespace(status_code=verification.status, json=verification.json), "validation")
             status = verification.json().get("status")
             for delay in (*EMISSAO_RETRY_DELAYS, None):
@@ -464,6 +476,7 @@ def _browser_generate(request: ReceitaRequest, documento: str, tipo: str, contri
                     return {status:response.status,data:await response.json()};
                 }""", {"url": EMISSAO_URL, "payload": {key: base[key] for key in ("ni", "tipoContribuinte", "dataNascimento")},
                        "timeoutMs": request.request_timeout_s * 1000})
+                _log("emission_received", http=result["status"])
                 try:
                     pdf = _emissao_pdf(SimpleNamespace(status_code=result["status"], json=lambda: result["data"]))
                     break
@@ -478,6 +491,7 @@ def _browser_generate(request: ReceitaRequest, documento: str, tipo: str, contri
     filename = f"Certidão Receita Federal - {documento}.pdf"
     destination = request.output_dir / filename
     _save(pdf, destination)
+    _log("certificate_saved", bytes=len(pdf), captcha_rounds=rounds)
     return CertificateResult(SOURCE, tipo, filename, destination,
                              {"status": status or "Emissao", "bytes": len(pdf), "executor": "browser", "captcha_rounds": rounds})
 
@@ -486,36 +500,15 @@ def generate(request: ReceitaRequest) -> CertificateResult:
     documento, tipo, contributor = _normalize(request)
     if os.environ.get("RECEITA_EXECUTOR") == "github":
         return _github_generate(request, documento, tipo)
-    if sys.platform == "linux":
-        return _browser_generate(request, documento, tipo, contributor)
-    token, user_agent = _fresh_token(request, tipo)
-
-    session = requests.Session(impersonate="chrome")
-    base = _payload(request, documento, tipo, contributor)
-    verificar = None
-    cookies: dict[str, str] = {}
     for attempt in range(request.captcha_retries):
-        verificar = _post(session, VERIFICAR_URL, base, token=token, user_agent=user_agent, timeout=request.request_timeout_s)
-        cookies = dict(verificar.cookies.items())
-        if verificar.status_code != 400:
-            break
-        # hCaptcha tokens are single-use; only retry with a fresh browser token.
-        if attempt + 1 < request.captcha_retries:
-            token, user_agent = _fresh_token(request, tipo)
-    _require_ok(verificar, "validation")
-    try:
-        status = verificar.json().get("status")
-    except Exception as exc:
-        raise CertificateError(SOURCE, "artifact", "json_invalido", "Verificar response was not valid JSON") from exc
-    pdf = _request_emissao_pdf(
-        session,
-        {key: base[key] for key in ("ni", "tipoContribuinte", "dataNascimento")},
-        cookies=cookies, user_agent=user_agent, timeout=request.request_timeout_s,
-    )
-    filename = f"Certidão Receita Federal - {documento}.pdf"
-    destination = request.output_dir / filename
-    _save(pdf, destination)
-    return CertificateResult(SOURCE, tipo, filename, destination, {"status": status or "Emissao", "bytes": len(pdf)})
+        _log("attempt_started", attempt=attempt + 1, max_attempts=request.captcha_retries)
+        try:
+            return _browser_generate(request, documento, tipo, contributor)
+        except CertificateError as exc:
+            _log("attempt_failed", attempt=attempt + 1, stage=exc.stage, code=exc.code)
+            if not exc.retryable or attempt + 1 == request.captcha_retries:
+                raise
+    raise AssertionError("unreachable")
 
 
 def main() -> int:

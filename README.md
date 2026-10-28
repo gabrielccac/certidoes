@@ -57,7 +57,7 @@ Invoke-RestMethod http://127.0.0.1:8090/jobs -Method Post `
 
 O provedor local grava um relatório sem dados pessoais e não altera o
 Airtable. A Receita também pode ser executada diretamente no Chrome local.
-No Linux, o gerador preenche o formulário oficial e mantém a validação e a
+O gerador local preenche o formulário oficial e mantém a validação e a
 emissão na mesma sessão do navegador. O solver visual de `captcha-solver` foi
 portado para `src/certidoes/captcha/`, com detecção dos modais de 400/520 px,
 extração da grade centralizada e suporte a arrastar a peça ao destino. São
@@ -90,6 +90,12 @@ não exigiu seleção de imagens nem arraste; a validação completa desses
 desafios continua pendente. As tentativas em contêiner e em Xvfb foram
 rejeitadas com `CaptchaFalhaValidacao`. O sucesso no desktop não valida esses
 ambientes nem o executor GitHub/Windows.
+
+O mesmo fluxo de formulário é usado no Windows. Os logs registram abertura
+do navegador, submissão, rodadas visuais e respostas de validação/emissão,
+sem incluir documento, data de nascimento, token ou cookies. O workflow de
+diagnóstico limita a execução a uma tentativa completa; o resultado antigo
+de setembro não valida o solver visual atual.
 
 ## Execução com Docker
 

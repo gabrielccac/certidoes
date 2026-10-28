@@ -238,11 +238,12 @@ def test_drag_waits_for_scene_to_load():
 
 @pytest.mark.parametrize("document,birth", [("12433377617", "2002-05-23"), ("11222333000181", None)])
 @pytest.mark.parametrize("verification_status", [200, 400])
-def test_native_issuance_keeps_browser_alive_and_retries_processing(monkeypatch, tmp_path, document, birth, verification_status):
+@pytest.mark.parametrize("platform", ["linux", "win32"])
+def test_native_issuance_keeps_browser_alive_and_retries_processing(monkeypatch, tmp_path, document, birth, verification_status, platform):
     import base64
 
     monkeypatch.delenv("RECEITA_EXECUTOR", raising=False)
-    monkeypatch.setattr(receita.sys, "platform", "linux")
+    monkeypatch.setattr(receita.sys, "platform", platform)
     monkeypatch.setattr(hcaptcha, "vis_modal", lambda page: [])
     page = Mock()
     alive = []
@@ -288,6 +289,60 @@ def test_native_issuance_keeps_browser_alive_and_retries_processing(monkeypatch,
 
 def test_normalizes_formatted_cpf():
     assert _normalize(ReceitaRequest("124.333.776-17", "2002-05-23")) == ("12433377617", "CPF", "PF")
+
+
+def test_windows_form_waits_for_visual_solver_before_verification(monkeypatch, tmp_path, capsys):
+    import base64
+
+    monkeypatch.delenv("RECEITA_EXECUTOR", raising=False)
+    monkeypatch.setattr(receita.sys, "platform", "win32")
+    page = Mock()
+    events = {}
+    state = {"waiting": False, "alive": False}
+    page.on.side_effect = lambda name, callback: events.update({name: callback})
+    page.get_by_role.return_value.click.side_effect = lambda **kwargs: state.update(waiting=True)
+    monkeypatch.setattr(hcaptcha, "vis_modal", lambda page: [{}] if state["waiting"] else [])
+
+    def solve_visual(page, directory, round_number):
+        assert state == {"waiting": True, "alive": True}
+        assert round_number == 0
+        events["response"](SimpleNamespace(url=receita.VERIFICAR_URL,
+            request=SimpleNamespace(method="POST"), status=200, json=lambda: {"status": "Emitida"}))
+        state["waiting"] = False
+
+    solve = Mock(side_effect=solve_visual)
+    monkeypatch.setattr(receita, "_solve_visual", solve)
+    pdf = b"%PDF-1.4 solved"
+    page.evaluate.return_value = {"status": 200, "data": {"pdf": base64.b64encode(pdf).decode()}}
+
+    @contextmanager
+    def browser(request):
+        state["alive"] = True
+        try:
+            yield page
+        finally:
+            state["alive"] = False
+
+    monkeypatch.setattr(receita, "_browser", browser)
+    result = receita.generate(ReceitaRequest("12433377617", "2002-05-23", output_dir=tmp_path))
+    assert result.pdf_path.read_bytes() == pdf
+    assert result.metadata["captcha_rounds"] == 1
+    solve.assert_called_once()
+    logs = capsys.readouterr().err
+    assert '"event": "verification_received", "http": 200, "captcha_rounds": 1' in logs
+    assert "12433377617" not in logs and "2002-05-23" not in logs
+
+
+@pytest.mark.parametrize("retryable,expected_calls", [(True, 3), (False, 1)])
+def test_browser_retry_limit_preserves_error(monkeypatch, retryable, expected_calls):
+    monkeypatch.delenv("RECEITA_EXECUTOR", raising=False)
+    error = CertificateError("receita", "challenge", "captcha_rejeitado", "rejected", retryable=retryable)
+    browser_generate = Mock(side_effect=error)
+    monkeypatch.setattr(receita, "_browser_generate", browser_generate)
+    with pytest.raises(CertificateError) as raised:
+        receita.generate(ReceitaRequest("12433377617", "2002-05-23", captcha_retries=3))
+    assert raised.value is error
+    assert browser_generate.call_count == expected_calls
 
 
 def test_normalizes_cnpj_without_birth_date():
