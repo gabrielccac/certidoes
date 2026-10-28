@@ -30,6 +30,7 @@ jobs:
       PYTHONUTF8: "1"
       PYTHONPATH: src
       CERTIDOES_DOCKER: "1"  # adds --no-sandbox, same as the container image
+      FAZENDA_EXECUTOR: local  # the runner emits itself; never dispatch another run
     steps:
       - uses: actions/checkout@v4
 

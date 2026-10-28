@@ -36,16 +36,49 @@ def test_decrypt_default_still_rejects_other_shapes():
         decrypt(encrypt(PAYLOAD, public), private)
 
 
-def test_generate_routes_to_github_when_env_is_set(monkeypatch, tmp_path):
+def _clear_executor_env(monkeypatch):
+    monkeypatch.delenv("FAZENDA_EXECUTOR", raising=False)
+    monkeypatch.delenv("K_SERVICE", raising=False)
+
+
+def test_executor_defaults_to_local_outside_cloud_run(monkeypatch):
+    _clear_executor_env(monkeypatch)
+    assert fazenda._executor() == "local"
+
+
+def test_executor_defaults_to_github_on_cloud_run(monkeypatch):
+    _clear_executor_env(monkeypatch)
+    monkeypatch.setenv("K_SERVICE", "certidoes-ingest")
+    assert fazenda._executor() == "github"
+
+
+def test_explicit_executor_overrides_the_cloud_run_default(monkeypatch):
+    _clear_executor_env(monkeypatch)
+    monkeypatch.setenv("K_SERVICE", "certidoes-ingest")
+    monkeypatch.setenv("FAZENDA_EXECUTOR", "local")
+    assert fazenda._executor() == "local"
+    monkeypatch.delenv("K_SERVICE")
     monkeypatch.setenv("FAZENDA_EXECUTOR", "github")
+    assert fazenda._executor() == "github"
+
+
+def test_unknown_executor_value_falls_back_to_detection(monkeypatch):
+    _clear_executor_env(monkeypatch)
+    monkeypatch.setenv("FAZENDA_EXECUTOR", "nonsense")
+    assert fazenda._executor() == "local"
+
+
+def test_generate_routes_to_github_on_cloud_run(monkeypatch, tmp_path):
+    _clear_executor_env(monkeypatch)
+    monkeypatch.setenv("K_SERVICE", "certidoes-ingest")
     seen = {}
     monkeypatch.setattr(fazenda, "_github_generate", lambda request, documento: seen.update(doc=documento) or "via-github")
     assert fazenda.generate(FazendaRequest(documento="111.222.333-44", output_dir=tmp_path)) == "via-github"
     assert seen["doc"] == "11122233344"
 
 
-def test_generate_keeps_the_local_browser_path_by_default(monkeypatch, tmp_path):
-    monkeypatch.delenv("FAZENDA_EXECUTOR", raising=False)
+def test_generate_keeps_the_local_browser_path_outside_cloud_run(monkeypatch, tmp_path):
+    _clear_executor_env(monkeypatch)
     monkeypatch.setattr(fazenda, "_chrome_path", lambda: "chrome")
 
     def local_path_reached(*args, **kwargs):
