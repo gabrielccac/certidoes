@@ -19,11 +19,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        trial: [1, 2, 3]
-    name: Android fresh worker ${{ matrix.trial }}
+        runtime: [native, docker]
+    name: Android touch / ${{ matrix.runtime }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
+      ANDROID_CONTAINER: ${{ matrix.runtime == 'docker' }}
       PYTHONPATH: src
       PYTHONUNBUFFERED: '1'
       RECEITA_PAYLOAD: ${{ inputs.payload }}
@@ -38,11 +39,15 @@ jobs:
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
       - name: Install Pure CDP dependencies
         run: uv pip install --system --no-progress seleniumbase==4.56.4 requests curl_cffi cryptography pypdf==6.21.3
+      - name: Build Android container runtime
+        if: matrix.runtime == 'docker'
+        run: docker build -f experiments/receita_environment_probe/Dockerfile.android-runtime -t receita-android-runtime:probe .
       - name: Enable KVM on this disposable worker
         run: sudo chmod a+rw /dev/kvm
       - name: Run actual Android with its native Chrome browser
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
+          pre-emulator-launch-script: bash experiments/receita_environment_probe/android-container.sh
           api-level: 36
           target: google_apis
           arch: x86_64
@@ -59,10 +64,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: android-repeat-${{ matrix.trial }}-${{ inputs.request_id }}
+          name: android-touch-${{ matrix.runtime }}-${{ inputs.request_id }}
           path: |
             runs/pure-cdp-android/android.json
             runs/pure-cdp-android/*/result.json
+            runs/pure-cdp-android/*/failure.png
           if-no-files-found: warn
           retention-days: 1
 

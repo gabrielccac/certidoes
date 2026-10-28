@@ -112,16 +112,53 @@ def run(request: receita.ReceitaRequest, *, android_port: int | None, single_sdk
             assert report["fingerprint"]["mobile"], "Android mobile browser not active"
         sb.wait_for_element_visible('input[name="niContribuinte"]', timeout=30)
         sb.click_if_visible('button:contains("Aceitar")')
-        sb.type('input[name="niContribuinte"]', document)
+        if android_port:
+            sb.clear('input[name="niContribuinte"]')
+            sb.press_keys('input[name="niContribuinte"]', document)
+        else:
+            sb.type('input[name="niContribuinte"]', document)
+        formatted_birth = ""
         if kind == "CPF":
             year, month, day = request.data_nascimento.split("-")
-            sb.type('input[name="dataNascimento"]', f"{day}/{month}/{year}")
+            formatted_birth = f"{day}/{month}/{year}"
+            if android_port:
+                sb.clear('input[name="dataNascimento"]')
+                sb.press_keys('input[name="dataNascimento"]', formatted_birth)
+            else:
+                sb.type('input[name="dataNascimento"]', formatted_birth)
         report["form_state"] = sb.evaluate("""(() => ({
             document_matches:document.querySelector('input[name="niContribuinte"]').value.replace(/\\D/g,'')===""" + json.dumps(document) + """,
+            birth_matches:document.querySelector('input[name="dataNascimento"]')?.value===""" + json.dumps(formatted_birth) + """,
             birth_length:document.querySelector('input[name="dataNascimento"]')?.value.length,
+            form_invalid:!!document.querySelector('form.ng-invalid'),
             focus:document.hasFocus(),visibility:document.visibilityState}))()""")
         assert report["form_state"]["document_matches"], "Form document mismatch"
-        sb.click('button:contains("Emitir Certidão")', timeout=30)
+        assert kind != "CPF" or report["form_state"]["birth_matches"], "Form birth mismatch"
+        if android_port:
+            from mycdp import input_
+            sb.evaluate("""(() => {
+                document.activeElement?.blur();
+                const button=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Emitir Certidão');
+                window.__certidoesSubmit={clicks:0,submits:0};
+                button.addEventListener('click',()=>window.__certidoesSubmit.clicks++,true);
+                document.querySelector('form')?.addEventListener('submit',()=>window.__certidoesSubmit.submits++,true);
+                button.scrollIntoView({block:'center',behavior:'instant'});
+            })()""")
+            pump(0.4)
+            for attempt in range(2):
+                point = sb.evaluate("""(() => {
+                    const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Emitir Certidão');
+                    const r=b.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};
+                })()""")
+                send(input_.synthesize_tap_gesture(**point, gesture_source_type=input_.GestureSourceType.TOUCH))
+                pump(0.4)
+                report["submit_events"] = sb.evaluate("window.__certidoesSubmit")
+                if report["submit_events"]["clicks"]:
+                    break
+            else:
+                raise receita.CertificateError("receita", "browser", "submit_tap_missed", "Submit button did not receive the Android tap")
+        else:
+            sb.click('button:contains("Emitir Certidão")', timeout=30)
         deadline = time.monotonic() + request.token_timeout_ms / 1000
         while receita.VERIFICAR_URL not in responses and time.monotonic() < deadline:
             pump()
@@ -154,6 +191,19 @@ def run(request: receita.ReceitaRequest, *, android_port: int | None, single_sdk
         destination = request.output_dir / "certificate.pdf"
         receita._save(pdf, destination)
         return destination
+    except Exception:
+        if not report.get("verification"):
+            try:
+                report["failure_state"] = sb.evaluate("""(() => ({
+                    rejected:/requested URL was rejected/i.test(document.body?.innerText||''),
+                    portal_106:/106\\s*-\\s*\\d{2}\\/\\d{2}\\/\\d{4}/.test(document.body?.innerText||''),
+                    form_invalid:!!document.querySelector('form.ng-invalid'),
+                    submit_events:window.__certidoesSubmit||null}))()""")
+                sb.evaluate("document.querySelectorAll('input,textarea').forEach(e=>e.style.visibility='hidden')")
+                sb.save_screenshot(str(request.output_dir / "failure.png"))
+            except Exception as error:
+                report["capture_error"] = type(error).__name__
+        raise
     finally:
         sb.quit()
         report["playwright_imported"] = any(name == "playwright" or name.startswith("playwright.") for name in sys.modules)

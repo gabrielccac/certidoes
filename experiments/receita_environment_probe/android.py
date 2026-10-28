@@ -25,6 +25,12 @@ def main():
              "emulator": adb("shell", "getprop", "ro.kernel.qemu") == "1",
              "cpu_abi": adb("shell", "getprop", "ro.product.cpu.abi"),
              "ua_override": False, "touch_override": False, "metrics_override": False}
+    facts["runtime"] = "docker" if os.environ.get("ANDROID_CONTAINER") == "true" else "native"
+    if facts["runtime"] == "docker":
+        running = subprocess.run(["docker", "inspect", "receita-android-avd", "--format", "{{.State.Running}}"],
+            check=True, capture_output=True, text=True).stdout.strip()
+        assert running == "true", "Android container is not running"
+        facts["emulator_container_running"] = True
     assert facts["emulator"] and facts["android_api"].isdigit(), "Android AVD required"
     assert "package:" in adb("shell", "pm", "path", "com.android.chrome"), "Chrome package missing"
     info = adb("shell", "dumpsys", "package", "com.android.chrome")
