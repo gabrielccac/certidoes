@@ -256,9 +256,22 @@ def _github_generate(request: FazendaRequest, documento: str) -> CertificateResu
                               "certificate_type": request.tipo_certidao})
 
 
+def _executor() -> str:
+    """Pick where the certificate is emitted: "local" (Chrome on this host) or "github".
+
+    FAZENDA_EXECUTOR=local|github forces a choice. Otherwise Cloud Run (which sets
+    K_SERVICE) defaults to github, because the Cloudflare widget rejects its
+    containers, and every other host keeps the local browser.
+    """
+    explicit = os.environ.get("FAZENDA_EXECUTOR", "").strip().lower()
+    if explicit in ("local", "github"):
+        return explicit
+    return "github" if os.environ.get("K_SERVICE") else "local"
+
+
 def generate(request: FazendaRequest) -> CertificateResult:
     documento = _validate(request)
-    if os.environ.get("FAZENDA_EXECUTOR") == "github":
+    if _executor() == "github":
         return _github_generate(request, documento)
     request.output_dir.mkdir(parents=True, exist_ok=True)
     chrome = CdpChrome(_chrome_path(), debug_port=request.debug_port, profile_dir=request.profile_dir)
