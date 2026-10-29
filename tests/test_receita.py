@@ -261,7 +261,7 @@ def test_drag_waits_for_scene_to_load():
 def test_native_issuance_keeps_browser_alive_and_retries_processing(monkeypatch, tmp_path, document, birth, verification_status, platform):
     import base64
 
-    monkeypatch.delenv("RECEITA_EXECUTOR", raising=False)
+    monkeypatch.setenv("RECEITA_EXECUTOR", "local")
     monkeypatch.setattr(receita.sys, "platform", platform)
     monkeypatch.setattr(hcaptcha, "vis_modal", lambda page: [])
     monkeypatch.setattr(receita, "_trace_captcha", lambda *args: None)
@@ -314,7 +314,7 @@ def test_normalizes_formatted_cpf():
 def test_late_cookie_banner_is_dismissed_before_form_action(monkeypatch, tmp_path):
     import base64
 
-    monkeypatch.delenv("RECEITA_EXECUTOR", raising=False)
+    monkeypatch.setenv("RECEITA_EXECUTOR", "local")
     monkeypatch.setattr(receita, "_trace_captcha", lambda *args: None)
     monkeypatch.setattr(hcaptcha, "vis_modal", lambda page: [])
     page, consent, submit = Mock(), Mock(), Mock()
@@ -350,7 +350,7 @@ def test_late_cookie_banner_is_dismissed_before_form_action(monkeypatch, tmp_pat
 def test_windows_form_waits_for_visual_solver_before_verification(monkeypatch, tmp_path, capsys):
     import base64
 
-    monkeypatch.delenv("RECEITA_EXECUTOR", raising=False)
+    monkeypatch.setenv("RECEITA_EXECUTOR", "local")
     monkeypatch.setattr(receita.sys, "platform", "win32")
     monkeypatch.setattr(receita, "_trace_captcha", lambda *args: None)
     page = Mock()
@@ -392,7 +392,7 @@ def test_windows_form_waits_for_visual_solver_before_verification(monkeypatch, t
 
 @pytest.mark.parametrize("retryable,expected_calls", [(True, 3), (False, 1)])
 def test_browser_retry_limit_preserves_error(monkeypatch, retryable, expected_calls):
-    monkeypatch.delenv("RECEITA_EXECUTOR", raising=False)
+    monkeypatch.setenv("RECEITA_EXECUTOR", "local")
     error = CertificateError("receita", "challenge", "captcha_rejeitado", "rejected", retryable=retryable)
     browser_generate = Mock(side_effect=error)
     monkeypatch.setattr(receita, "_browser_generate", browser_generate)

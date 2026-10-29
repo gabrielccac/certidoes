@@ -7,9 +7,9 @@ configuradas, salva os PDFs em `runs/` e publica um resumo sem dados pessoais.
 ## Requisitos
 
 - Python 3.12 e [uv](https://docs.astral.sh/uv/) para desenvolvimento local.
-- Docker Desktop ou Docker Engine para a imagem completa de ingestão.
+- Linux x86_64 com Docker Engine e Binder para o Redroid usado pela Receita.
 - Um endereço HTTPS público quando o Airtable precisar buscar os anexos.
-- Um token pessoal fine-grained do GitHub para o executor da Receita.
+- Um token pessoal fine-grained do GitHub somente ao escolher o executor GitHub.
 - Um token pessoal do Airtable quando o provedor Airtable for utilizado.
 
 A imagem contém Google Chrome, Xvfb, Playwright, OpenCV, ddddocr, o arquivo
@@ -56,7 +56,19 @@ Invoke-RestMethod http://127.0.0.1:8090/jobs -Method Post `
 ```
 
 O provedor local grava um relatório sem dados pessoais e não altera o
-Airtable. A Receita também pode ser executada diretamente no Chrome local.
+Airtable.
+
+## Receita: padrão Redroid sem KVM
+
+A API, o CLI e o Compose usam `RECEITA_EXECUTOR=redroid` por padrão, com
+Android 15 e CDP direto. A emissão na VPS foi validada sem KVM ou SeleniumBase.
+Prepare os módulos do host e os APKs Chrome fixados conforme
+[docker/receita/README.md](docker/receita/README.md) antes de iniciar o Compose.
+Não exige chave de solver ou token GitHub para essa execução.
+
+### Controladores anteriores
+
+A Receita também pode ser executada explicitamente no Chrome local.
 O gerador local preenche o formulário oficial e mantém a validação e a
 emissão na mesma sessão do navegador. O solver visual de `captcha-solver` foi
 portado para `src/certidoes/captcha/`, com detecção dos modais de 400/520 px,
@@ -148,9 +160,10 @@ uv run python -m certidoes.ingest.worker `
 | `INGEST_SECRET` | Um segredo aleatório para a API. Gere com `python -c "import secrets; print(secrets.token_urlsafe(32))"`. |
 | `PUBLIC_BASE_URL` | URL HTTPS pública que o Airtable usará para buscar `/files/...`; não pode ser `localhost`. |
 | `INGEST_DOMAIN` | Hostname usado pelo Caddy, normalmente o mesmo host de `PUBLIC_BASE_URL`. |
-| `RECEITA_EXECUTOR` | Use `github` no Docker/produção. `local` usa o navegador local e serve principalmente para diagnóstico. |
+| `RECEITA_EXECUTOR` | Padrão `redroid`: Android 15 + CDP direto, sem KVM. `local` e `github` selecionam explicitamente os controladores anteriores. |
+| `RECEITA_ANDROID_SERIAL` | Dispositivo ADB do serviço Redroid; padrão `receita-android:5555`. |
 | `RECEITA_GITHUB_REPO` | Repositório no formato `organização/nome`, normalmente `gabrielccac/certidoes`. |
-| `RECEITA_GITHUB_TOKEN` | Token pessoal fine-grained do GitHub, limitado a este repositório e com `Actions: Read and write`. Ele é injetado em tempo de execução e não entra no Dockerfile. |
+| `RECEITA_GITHUB_TOKEN` | Somente para o executor GitHub: PAT limitado a este repositório, com `Actions: Read and write`. |
 | `RECEITA_GITHUB_REF` | Branch ou tag que contém o workflow; use `main` em produção. |
 | `OPENROUTER_API_KEY` | Chave do OpenRouter para resolver desafios visuais. No executor GitHub, configure também o secret com esse nome no repositório. |
 | `RECEITA_CAPTCHA_MODEL` | Modelo visual do OpenRouter; padrão `meta/muse-spark-1.3`. |

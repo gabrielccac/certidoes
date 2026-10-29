@@ -523,8 +523,14 @@ def _browser_generate(request: ReceitaRequest, documento: str, tipo: str, contri
 
 def generate(request: ReceitaRequest) -> CertificateResult:
     documento, tipo, contributor = _normalize(request)
-    if os.environ.get("RECEITA_EXECUTOR") == "github":
+    executor = os.environ.get("RECEITA_EXECUTOR", "redroid")
+    if executor == "redroid":
+        from certidoes.receita_android import generate as android_generate
+        return android_generate(request)
+    if executor == "github":
         return _github_generate(request, documento, tipo)
+    if executor != "local":
+        raise CertificateError(SOURCE, "input", "executor_invalido", "RECEITA_EXECUTOR must be redroid, github or local")
     for attempt in range(request.captcha_retries):
         _log("attempt_started", attempt=attempt + 1, max_attempts=request.captcha_retries)
         try:

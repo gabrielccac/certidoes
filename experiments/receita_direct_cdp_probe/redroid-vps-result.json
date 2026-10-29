@@ -1,0 +1,241 @@
+{
+  "date": "2026-10-29",
+  "environment": {
+    "host": "VPS Ubuntu 24.04 x86_64",
+    "kernel": "6.8.0-147-generic",
+    "host_kvm_exists": false,
+    "binder_module_installed": true,
+    "android_api": 35,
+    "chrome": "133.0.6943.137",
+    "gms_installed": false,
+    "seleniumbase_installed": false
+  },
+  "boot": {
+    "image": "redroid/redroid@sha256:b51bde9cef80f7bd7581148192f2b2f4d41f23c6344cfe88eceeb8ddd67490ee",
+    "kvm_device_passed": false,
+    "host_kvm_exists": false,
+    "stage": "boot",
+    "status": "success",
+    "boot_s": 29.79
+  },
+  "preflight": {
+    "status": "success",
+    "stage": "complete",
+    "synthetic_page_only": true,
+    "browser": "Chrome/133.0.6943.137",
+    "android": true,
+    "control_page_result": {
+      "ok": true
+    },
+    "captured_http_responses": 3,
+    "captured_response_bodies": [
+      {
+        "ok": true
+      }
+    ],
+    "typed_value_matches": true,
+    "native_cdp_tap": true,
+    "network_http": 200,
+    "response_body_matches": true,
+    "async_evaluation": true,
+    "gesture": "touch",
+    "commands": {
+      "Browser.getVersion": 1,
+      "Network.enable": 1,
+      "Page.enable": 1,
+      "Page.navigate": 1,
+      "Runtime.evaluate": 10,
+      "Input.dispatchKeyEvent": 9,
+      "Input.synthesizeTapGesture": 1,
+      "Network.getResponseBody": 1
+    },
+    "ignored_unsubscribed_events": {
+      "Page.frameStartedLoading": 1,
+      "Network.requestWillBeSent": 3,
+      "Network.requestWillBeSentExtraInfo": 3,
+      "Network.responseReceivedExtraInfo": 3,
+      "Page.frameNavigated": 1,
+      "Network.policyUpdated": 1,
+      "Network.dataReceived": 3,
+      "Page.domContentEventFired": 1,
+      "Page.loadEventFired": 1,
+      "Page.frameStoppedLoading": 1
+    }
+  },
+  "receita": {
+    "engine": "direct",
+    "device": "android",
+    "single_sdk": false,
+    "reference_commit": "af6af04828651a461120cfce379c39685edb1b27",
+    "sdk_loads": [
+      {
+        "http": 200,
+        "explicit": false
+      },
+      {
+        "http": 200,
+        "explicit": true
+      }
+    ],
+    "status": "success",
+    "stage": "complete",
+    "seleniumbase_installed": false,
+    "browser_version": "Chrome/133.0.6943.137",
+    "api_calls": [
+      [
+        "env",
+        200
+      ],
+      [
+        "Emissao/verificar",
+        200
+      ],
+      [
+        "Emissao",
+        200
+      ],
+      [
+        "Emissao",
+        200
+      ]
+    ],
+    "fingerprint": {
+      "ua": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Mobile Safari/537.36",
+      "platform": "Linux armv81",
+      "mobile": true,
+      "touch": 1,
+      "viewport": [
+        412,
+        787
+      ],
+      "screen": [
+        412,
+        915
+      ],
+      "dpr": 2.625,
+      "coarse_pointer": false,
+      "timezone": "America/Sao_Paulo",
+      "language": "en-US",
+      "webdriver": false
+    },
+    "form_state": {
+      "document_matches": true,
+      "birth_matches": true,
+      "birth_length": 10,
+      "form_invalid": false,
+      "focus": true,
+      "visibility": "visible"
+    },
+    "submitted_payload": {
+      "keys": [
+        "dataNascimento",
+        "ni",
+        "tipoContribuinte",
+        "tipoContribuinteEnum"
+      ],
+      "document_matches": true,
+      "birth_matches": true,
+      "contributor": true
+    },
+    "submitted_token_length": 2450,
+    "request_mobile_header": "?1",
+    "verification": {
+      "http": 200,
+      "status": "Emitida"
+    },
+    "submit_events": {
+      "clicks": 1,
+      "submits": 1,
+      "new_issue_clicks": 0
+    },
+    "pdf_source": "refetch",
+    "playwright_imported": false,
+    "bytes": 77110,
+    "pages": 1,
+    "sha256": "2e5650704a120733f09f0e9f8e83dc8eccc2ba99da6dc1d8c5c23e08598807c9",
+    "document_matches": true,
+    "elapsed_s": 10.46,
+    "python_peak_rss_kib": 101552,
+    "site_packages_bytes": 63195922,
+    "seleniumbase_imported": false,
+    "cdp_commands": {
+      "Browser.getVersion": 1,
+      "Network.enable": 1,
+      "Page.enable": 1,
+      "Page.navigate": 1,
+      "Runtime.evaluate": 21,
+      "Input.dispatchMouseEvent": 2,
+      "Input.dispatchKeyEvent": 21,
+      "Input.synthesizeTapGesture": 1,
+      "Network.getResponseBody": 3
+    },
+    "ignored_unsubscribed_events": {
+      "Page.frameStartedLoading": 6,
+      "Network.requestWillBeSentExtraInfo": 57,
+      "Network.responseReceivedExtraInfo": 57,
+      "Page.frameNavigated": 5,
+      "Network.policyUpdated": 9,
+      "Network.dataReceived": 223,
+      "Network.resourceChangedPriority": 2,
+      "Page.domContentEventFired": 1,
+      "Page.loadEventFired": 1,
+      "Page.frameStoppedLoading": 6,
+      "Page.navigatedWithinDocument": 1,
+      "Page.frameAttached": 4,
+      "Page.frameRequestedNavigation": 4,
+      "Network.requestServedFromCache": 6,
+      "Network.loadingFailed": 2
+    }
+  },
+  "independent_pdf_validation": {
+    "pdf_header_valid": true,
+    "pages": 1,
+    "document_matches": true,
+    "bytes": 77110,
+    "sha256": "2e5650704a120733f09f0e9f8e83dc8eccc2ba99da6dc1d8c5c23e08598807c9",
+    "independently_checked_on_host": true
+  },
+  "inss": {
+    "status": "visual_captcha_required",
+    "stage": "cpf_submit",
+    "solver_enabled": false,
+    "password_submissions": 0,
+    "cpf_submissions": 1,
+    "visual_captcha_seen": true,
+    "authentication_verified": false,
+    "personal_data_extracted": false,
+    "browser": "Chrome/133.0.6943.137",
+    "last_state": {
+      "host": "sso.acesso.gov.br",
+      "https": true,
+      "ready": "complete",
+      "account_field": true,
+      "password_field": false,
+      "visual_captcha": true,
+      "invalid_credentials": false,
+      "provider_codes": [],
+      "two_factor": false,
+      "consent_meu_inss": false,
+      "session_tokens_present": false,
+      "rejected": false
+    },
+    "elapsed_s": 11.69,
+    "cdp_commands": {
+      "Browser.getVersion": 1,
+      "Page.enable": 1,
+      "Page.navigate": 1,
+      "Runtime.evaluate": 31,
+      "Input.dispatchKeyEvent": 11,
+      "Input.synthesizeTapGesture": 1
+    }
+  },
+  "android16": {
+    "status": "boot_failed",
+    "reason": "ashmem/memfd compatibility; no portal accessed"
+  },
+  "limitations": [
+    "One successful Receita issuance; no load/repeatability claim",
+    "Meu INSS stopped at visual captcha before password",
+    "ARM not tested"
+  ]
+}

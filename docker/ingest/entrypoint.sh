@@ -1,6 +1,6 @@
 #!/bin/sh
 # Self-contained worker entrypoint: Xvfb for headed Chrome, then the API.
-# The VPS needs nothing but the Docker engine.
+# The Redroid sidecar additionally requires host Binder support.
 set -eu
 
 export DISPLAY="${DISPLAY:-:99}"

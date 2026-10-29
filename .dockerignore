@@ -4,6 +4,7 @@ tmp
 __pycache__
 *.pyc
 .git
+docker/receita/apks/
 .env
 .env.*
 !.env.example

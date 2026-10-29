@@ -8,11 +8,14 @@ services:
       AIRTABLE_BASE_ID: ${AIRTABLE_BASE_ID:?set AIRTABLE_BASE_ID}
       INGEST_SECRET: ${INGEST_SECRET:?set INGEST_SECRET}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL, e.g. https://certidoes.example.com}
-      RECEITA_EXECUTOR: ${RECEITA_EXECUTOR:-github}
+      RECEITA_EXECUTOR: ${RECEITA_EXECUTOR:-redroid}
+      RECEITA_ANDROID_SERIAL: ${RECEITA_ANDROID_SERIAL:-receita-android:5555}
+      RECEITA_ANDROID_CDP_PORT: ${RECEITA_ANDROID_CDP_PORT:-9229}
+      RECEITA_ANDROID_LOCK: ${RECEITA_ANDROID_LOCK:-/app/runs/.receita-android.lock}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       RECEITA_CAPTCHA_MODEL: ${RECEITA_CAPTCHA_MODEL:-meta/muse-spark-1.3}
       RECEITA_GITHUB_REPO: ${RECEITA_GITHUB_REPO:-gabrielccac/certidoes}
-      RECEITA_GITHUB_TOKEN: ${RECEITA_GITHUB_TOKEN:?set RECEITA_GITHUB_TOKEN}
+      RECEITA_GITHUB_TOKEN: ${RECEITA_GITHUB_TOKEN:-}
       RECEITA_GITHUB_REF: ${RECEITA_GITHUB_REF:-main}
       RECEITA_GITHUB_WORKFLOW: ${RECEITA_GITHUB_WORKFLOW:-receita-diagnostic.yml}
     volumes:
@@ -20,12 +23,45 @@ services:
       - ingest-profile:/app/experiments/profile
     expose:
       - "8090"
+    networks:
+      - default
+      - receita
+    depends_on:
+      receita-android:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8090/healthz', timeout=5).status == 200 else 1)"]
       interval: 30s
       timeout: 10s
       retries: 3
+
+  receita-android:
+    build:
+      context: ../receita
+    privileged: true
+    cpus: 2
+    mem_limit: 4g
+    memswap_limit: 4g
+    pids_limit: 4096
+    shm_size: 512m
+    command:
+      - androidboot.use_memfd=1
+      - androidboot.redroid_gpu_mode=guest
+      - androidboot.redroid_width=1080
+      - androidboot.redroid_height=2400
+      - androidboot.redroid_dpi=420
+    volumes:
+      - receita-android-data:/data
+    networks:
+      - receita
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/system/bin/sh", "-c", "test \"$$(/system/bin/getprop sys.boot_completed)\" = 1"]
+      start_period: 40s
+      interval: 10s
+      timeout: 5s
+      retries: 6
 
   caddy:
     image: caddy:2-alpine
@@ -44,3 +80,7 @@ volumes:
   ingest-runs:
   ingest-profile:
   caddy-data:
+  receita-android-data:
+
+networks:
+  receita:

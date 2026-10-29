@@ -84,6 +84,7 @@ jobs:
       - name: Run Receita probe
         env:
           LIVE_DOCUMENT: ${{ secrets.RECEITA_TEST_DOCUMENT }}
+          RECEITA_EXECUTOR: local
           LIVE_BIRTH: ${{ secrets.RECEITA_TEST_BIRTH }}
           RECEITA_PAYLOAD: ${{ inputs.payload }}
           RECEITA_PAYLOAD_PRIVATE_KEY: ${{ secrets.RECEITA_PAYLOAD_PRIVATE_KEY }}

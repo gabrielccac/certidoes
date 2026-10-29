@@ -2,7 +2,7 @@
 FROM python:3.12-slim-bookworm
 
 # Self-contained ingest worker: API + headed Chrome under Xvfb.
-# A Linux VPS needs nothing but the Docker engine to run this image.
+# Receita uses the separate Redroid service; other sources keep headed Chrome.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/src \
@@ -14,7 +14,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        xvfb xauth x11-utils ca-certificates wget gnupg \
+        adb xvfb xauth x11-utils ca-certificates wget gnupg \
         fonts-liberation fonts-noto-color-emoji \
         libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
         libdrm2 libdbus-1-3 libxkbcommon0 libxcomposite1 libxdamage1 \
