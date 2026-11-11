@@ -24,6 +24,11 @@ on:
         description: "Encrypted Receita request payload"
         required: false
         default: ""
+      runner:
+        description: "GitHub-hosted runner"
+        type: choice
+        default: windows-2025
+        options: [windows-2025, ubuntu-24.04]
 
 permissions:
   contents: read
@@ -34,12 +39,8 @@ concurrency:
 
 jobs:
   probe:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [blacksmith-2vcpu-windows-2025]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    runs-on: ${{ inputs.runner || 'windows-2025' }}
+    timeout-minutes: 15
     env:
       PYTHONUTF8: "1"
       PYTHONPATH: src
@@ -64,6 +65,10 @@ jobs:
       - name: Install project dependencies
         shell: pwsh
         run: uv pip install --system --no-progress .
+
+      - name: Install Xvfb (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
 
       - name: Locate Chrome
         shell: pwsh
@@ -105,6 +110,10 @@ jobs:
               $document = $request.documento
               $birth = $request.data_nascimento
             }
+            Write-Output "::add-mask::$document"
+            Write-Output "::add-mask::$birth"
+            $parts = $birth -split '-'
+            if ($parts.Count -eq 3) { Write-Output "::add-mask::$($parts[2])/$($parts[1])/$($parts[0])" }
             python -m certidoes.sources.receita `
               --documento $document `
               --data-nascimento $birth `
@@ -131,9 +140,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: receita-${{ matrix.os }}-${{ inputs.mode }}-${{ inputs.request_id }}-${{ github.run_id }}
+          name: receita-${{ inputs.runner }}-${{ inputs.mode }}-${{ inputs.request_id }}-${{ github.run_id }}
           path: |
             runs/receita-probe/trace.json
             runs/receita-issue/*.pdf
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 1
