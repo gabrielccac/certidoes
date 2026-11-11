@@ -1,4 +1,4 @@
-name: Receita Android direct CDP comparison
+name: Receita Android direct CDP
 run-name: Receita direct CDP ${{ inputs.request_id }}
 on:
   workflow_dispatch:
@@ -28,17 +28,14 @@ jobs:
         with:
           python-version: '3.12.15'
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
-      - name: Install two isolated Python environments
+      - name: Install direct CDP environment
         run: |
-          uv venv --python 3.12.15 "$RUNNER_TEMP/sb-control"
           uv venv --python 3.12.15 "$RUNNER_TEMP/cdp-direct"
-          uv pip install --python "$RUNNER_TEMP/sb-control/bin/python" --no-progress seleniumbase==4.56.4 requests curl_cffi cryptography pypdf==6.21.3
           uv pip install --python "$RUNNER_TEMP/cdp-direct/bin/python" --no-progress websocket-client==1.9.2 mycdp==1.4.0 requests curl_cffi cryptography pypdf==6.21.3
-          echo "CONTROL_PYTHON=$RUNNER_TEMP/sb-control/bin/python" >> "$GITHUB_ENV"
           echo "DIRECT_PYTHON=$RUNNER_TEMP/cdp-direct/bin/python" >> "$GITHUB_ENV"
       - name: Enable KVM
         run: sudo chmod a+rw /dev/kvm
-      - name: Compare controllers on the same Android worker
+      - name: Issue certificate with direct CDP
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
           api-level: 36
@@ -52,7 +49,7 @@ jobs:
           emulator-boot-timeout: 600
           disable-animations: true
           enable-hw-keyboard: true
-          script: $DIRECT_PYTHON -m experiments.receita_direct_cdp_probe.android
+          script: $DIRECT_PYTHON -m experiments.receita_direct_cdp_probe.android --direct-only
       - name: Upload redacted reports only
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
