@@ -314,13 +314,39 @@ def test_api_endpoints(monkeypatch, tmp_path):
         headers={"X-Ingest-Secret": "s3cret"},
     )
     assert response.status_code == 202
-    assert response.json() == {"accepted": True}
+    body = response.json()
+    assert body["accepted"] is True and len(body["job_id"]) == 32
+
+    for _ in range(50):
+        status = client.get(f"/jobs/{body['job_id']}", headers={"X-Ingest-Secret": "s3cret"}).json()
+        if status["state"] == "done":
+            break
+        time.sleep(0.02)
+    assert status["state"] == "done" and status["status"] == "FINALIZADO"
+    assert status["files"] == [] and status["lines"] == ["x"]
+    assert client.get(f"/jobs/{body['job_id']}").status_code == 401
+    assert client.get("/jobs/nope", headers={"X-Ingest-Secret": "s3cret"}).status_code == 404
 
     response = client.post(
         "/jobs", json={"provider": "airtable", "ref": {}},
         headers={"X-Ingest-Secret": "s3cret"},
     )
     assert response.status_code == 400
+
+    response = client.post(
+        "/jobs", json={"provider": "airtable", "ref": {"record_id": "recX"}, "callback_url": "file:///etc/passwd"},
+        headers={"X-Ingest-Secret": "s3cret"},
+    )
+    assert response.status_code == 400
+
+
+def test_local_provider_label_is_a_safe_slug(tmp_path):
+    from certidoes.ingest.local_provider import LocalProvider
+
+    provider = LocalProvider()
+    assert provider._label({"label": "../../etc/x"}) == "etc-x"
+    assert provider._label({"label": "ok_label-1"}) == "ok_label-1"
+    assert provider._label({}) == "local"
 
 
 def test_api_serializes_jobs(monkeypatch, tmp_path):

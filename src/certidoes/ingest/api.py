@@ -6,7 +6,11 @@ import hmac
 import json
 import os
 from pathlib import Path
+import threading
+import time
 from typing import Any
+import urllib.request
+import uuid
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
@@ -19,11 +23,14 @@ from certidoes.ingest.local_provider import LocalProvider
 from certidoes.ingest.mapping import load_mapping
 
 PROVIDERS = {"airtable": AirtableProvider, "local": LocalProvider}
+JOB_TTL_S = 24 * 3600
 
 
 class JobRequest(BaseModel):
     provider: str = "airtable"
     ref: dict[str, Any] = Field(default_factory=dict)
+    # Optional: the finished result is POSTed here (same body as GET /jobs/{job_id}).
+    callback_url: str | None = None
 
 
 def _redacted(report) -> dict:
@@ -37,6 +44,27 @@ def _redacted(report) -> dict:
     }
 
 
+def _result(report) -> dict:
+    """Redacted report plus the short-lived download links of the generated PDFs."""
+    return {**_redacted(report),
+            "files": [{"filename": a.filename, "url": a.url} for a in report.artifacts]}
+
+
+def _post_callback(url: str, body: dict, secret: str) -> bool:
+    data = json.dumps(body).encode()
+    for attempt in range(3):
+        try:
+            request = urllib.request.Request(url, data=data, method="POST", headers={
+                "Content-Type": "application/json", "X-Ingest-Secret": secret})
+            with urllib.request.urlopen(request, timeout=15) as response:
+                if response.status < 300:
+                    return True
+        except Exception:
+            pass
+        time.sleep(2 ** attempt)
+    return False
+
+
 def create_app(config_path: str | Path) -> FastAPI:
     mapping = load_mapping(config_path)
     output_base = Path(os.environ.get("INGEST_OUTPUT_BASE", "runs/ingest"))
@@ -45,6 +73,9 @@ def create_app(config_path: str | Path) -> FastAPI:
         raise RuntimeError("PUBLIC_BASE_URL is required (table bases fetch attachments from it)")
     store = LocalPublicDir(output_base / "_served", public_base_url)
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    # In-memory job registry for GET /jobs/{job_id}; lost on restart, pruned after JOB_TTL_S.
+    jobs: dict[str, dict] = {}
+    jobs_lock = threading.Lock()
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -98,18 +129,46 @@ def create_app(config_path: str | Path) -> FastAPI:
         ref_error = provider.check_ref(ref)
         if ref_error:
             raise HTTPException(status_code=400, detail=ref_error)
+        if request.callback_url and not request.callback_url.startswith(("https://", "http://")):
+            raise HTTPException(status_code=400, detail="callback_url must be http(s)")
         ref.setdefault("table_id", mapping.table)
+        job_id = uuid.uuid4().hex
+        with jobs_lock:
+            for old in [k for k, v in jobs.items() if time.time() - v["submitted_at"] > JOB_TTL_S]:
+                jobs.pop(old, None)
+            jobs[job_id] = {"job_id": job_id, "state": "queued", "submitted_at": time.time()}
 
         def job() -> None:
+            with jobs_lock:
+                jobs[job_id]["state"] = "running"
             try:
                 report = run_job(provider, mapping, ref, store, output_base)
                 print(json.dumps(_redacted(report)), flush=True)
+                outcome = {"state": "done", **_result(report)}
             except Exception as exc:
                 print(json.dumps({"ref": ref.get("record_id") or ref.get("recordId"),
                                   "error": type(exc).__name__}), flush=True)
+                outcome = {"state": "error", "error": type(exc).__name__}
+            with jobs_lock:
+                jobs[job_id].update(outcome, finished_at=time.time())
+                body = dict(jobs[job_id])
+            if request.callback_url:
+                delivered = _post_callback(request.callback_url, body, os.environ.get("INGEST_SECRET", ""))
+                with jobs_lock:
+                    jobs[job_id]["callback_delivered"] = delivered
 
         executor.submit(job)
-        return {"accepted": True}
+        return {"accepted": True, "job_id": job_id}
+
+    @app.get("/jobs/{job_id}")
+    def job_status(job_id: str, x_ingest_secret: str = Header(default="", alias="X-Ingest-Secret")):
+        if not _authorized(x_ingest_secret):
+            raise HTTPException(status_code=401, detail="unauthorized")
+        with jobs_lock:
+            entry = jobs.get(job_id)
+            if entry is None:
+                raise HTTPException(status_code=404)
+            return dict(entry)
 
     @app.exception_handler(404)
     def not_found(_request, _exc):

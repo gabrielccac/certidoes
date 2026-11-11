@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import os
 import re
 import tempfile
 from dataclasses import dataclass
@@ -96,7 +97,9 @@ def _save_pdf(destination: Path, body: bytes) -> None:
 
 def generate(request: TstRequest) -> CertificateResult:
     documento = _validate(request)
-    session = requests.Session(impersonate="chrome")
+    # TST blocks some datacenter IPs; TST_PROXY (e.g. socks5h://host:1080) routes only this source.
+    proxy = os.environ.get("TST_PROXY", "").strip()
+    session = requests.Session(impersonate="chrome", proxies={"http": proxy, "https": proxy} if proxy else None)
     last_error: CertificateError | None = None
     for attempt in range(1, request.captcha_retries + 1):
         try:

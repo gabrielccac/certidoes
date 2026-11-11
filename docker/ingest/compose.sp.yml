@@ -1,0 +1,66 @@
+# Production on the São Paulo VPS, behind the existing Traefik (n8n stack).
+# API at https://${INGEST_HOST}/certidoes ; Receita runs on GitHub Actions (Windows);
+# TST goes through an SSH SOCKS tunnel because the TST blocks this server's IP.
+#
+#   docker compose --env-file .env -f docker/ingest/compose.sp.yml up -d --build
+#
+# .env needs: INGEST_SECRET, INGEST_HOST, RECEITA_GITHUB_TOKEN, TST_TUNNEL_TARGET (user@host)
+# and the tunnel key + known_hosts in ./tunnel/ (id_tst, known_hosts).
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: docker/ingest/Dockerfile
+    command: ["python", "-m", "certidoes.ingest.worker", "--config", "config/ingest/local.toml",
+              "--serve", "--port", "8090"]
+    environment:
+      INGEST_SECRET: ${INGEST_SECRET:?set INGEST_SECRET}
+      PUBLIC_BASE_URL: https://${INGEST_HOST:?set INGEST_HOST}/certidoes
+      RECEITA_EXECUTOR: github
+      RECEITA_GITHUB_REPO: ${RECEITA_GITHUB_REPO:-gabrielccac/certidoes}
+      RECEITA_GITHUB_TOKEN: ${RECEITA_GITHUB_TOKEN:?set RECEITA_GITHUB_TOKEN}
+      RECEITA_GITHUB_REF: ${RECEITA_GITHUB_REF:-main}
+      RECEITA_GITHUB_WORKFLOW: receita-diagnostic.yml
+      RECEITA_GITHUB_POLL_S: "3"
+      TST_PROXY: socks5h://tst-tunnel:1080
+    volumes:
+      - ingest-runs:/app/runs
+      - ingest-profile:/app/experiments/profile
+    networks: [traefik, internal]
+    restart: unless-stopped
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${TRAEFIK_NETWORK:-n8n_default}
+      traefik.http.routers.certidoes.rule: Host(`${INGEST_HOST}`) && PathPrefix(`/certidoes`)
+      traefik.http.routers.certidoes.entrypoints: websecure
+      traefik.http.routers.certidoes.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-mytlschallenge}
+      traefik.http.routers.certidoes.middlewares: certidoes-strip
+      traefik.http.middlewares.certidoes-strip.stripprefix.prefixes: /certidoes
+      traefik.http.services.certidoes.loadbalancer.server.port: "8090"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8090/healthz', timeout=5).status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  tst-tunnel:
+    image: alpine:3.20
+    command: >
+      sh -c "apk add -q --no-cache openssh-client >/dev/null &&
+      exec ssh -N -D 0.0.0.0:1080 -i /k/id_tst -o UserKnownHostsFile=/k/known_hosts
+      -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3
+      -o ExitOnForwardFailure=yes ${TST_TUNNEL_TARGET:?set TST_TUNNEL_TARGET}"
+    volumes:
+      - ./tunnel:/k:ro
+    networks: [internal]
+    restart: unless-stopped
+
+volumes:
+  ingest-runs:
+  ingest-profile:
+
+networks:
+  internal:
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK:-n8n_default}

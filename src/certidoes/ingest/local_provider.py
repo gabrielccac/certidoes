@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from certidoes.ingest.providers import JobInputs, TableProvider
@@ -28,7 +29,9 @@ class LocalProvider(TableProvider):
         self.reports: dict[str, dict] = {}
 
     def _label(self, ref: dict) -> str:
-        return str(ref.get("label") or "local")
+        # The label becomes a directory and file name: keep it to a safe slug.
+        label = re.sub(r"[^A-Za-z0-9_.-]", "-", str(ref.get("label") or "local")).strip(".-")
+        return label[:80] or "local"
 
     def fetch(self, ref: dict) -> JobInputs:
         fields = ref.get("fields") or {}
